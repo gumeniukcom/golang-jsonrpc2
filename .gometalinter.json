@@ -1,0 +1,48 @@
+{
+  "Vendor": true,
+  "Deadline": "2m",
+  "Sort": [
+    "linter",
+    "severity",
+    "path",
+    "line"
+  ],
+  "Exclude": [
+    "vendor",
+    "/usr/local/Cellar/go",
+    "structs",
+    "_test.go"
+  ],
+  "EnableGC": true,
+  "Linters": {
+    "nakedret": {
+      "Command": "nakedret",
+      "Pattern": "^(?P<path>.*?\\.go):(?P<line>\\d+)\\s*(?P<message>.*)$"
+    }
+  },
+  "WarnUnmatchedDirective": true,
+  "DisableAll": true,
+  "Enable": [
+    "deadcode",
+    "dupl",
+    "gosec",
+    "gocyclo",
+    "gofmt",
+    "goimports",
+    "golint",
+    "gosimple",
+    "ineffassign",
+    "interfacer",
+    "lll",
+    "misspell",
+    "maligned",
+    "nakedret",
+    "unconvert",
+    "unparam",
+    "unused",
+    "structcheck",
+    "vet"
+  ],
+  "Cyclo": 16,
+  "LineLength": 120
+}
