@@ -1,14 +1,3 @@
-# golang-jsonrpc2
-
-Implementation for JSON-RPC2 protocol
-
-Full specification: https://www.jsonrpc.org/specification
-
-
-# HTTP example
-
-## Server
-```go
 package main
 
 import (
@@ -77,17 +66,3 @@ func sum(ctx context.Context, data json.RawMessage) (json.RawMessage, int, error
 	}
 	return mdata, jrpc.OK, nil
 }
-```
-
-## Request
-
-
-```bash
-curl -d '{"jsonrpc":"2.0", "id":"qwe", "method":"sum", "params":{"a":5, "b":3}}' -H "Content-Type: application/json" -X POST http://localhost:8088/
-``` 
-## Response
-
-```json
-{"jsonrpc":"2.0","result":{"sum":8},"id":"qwe"}
-```
-

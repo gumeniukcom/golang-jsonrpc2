@@ -50,9 +50,10 @@ func newError(errMsg string, errorCode int, info string, id interface{}) *struct
 }
 
 func errorInternal() json.RawMessage {
-	return []byte("{\"version\":2,\"error\":{\"code\":-32603,\"message\":\"internal error\"}, \"id\":1}")
+	return []byte("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"internal_error\"}, \"id\":1}")
 }
 
 func errorInvalidRequest() json.RawMessage {
-	return []byte("{\"version\":2,\"error\":{\"code\":-32600,\"message\":\"Invalid Request\"}, \"id\":1}")
+	return []byte(
+		"{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"invalid_request_not_conforming_to_spec\"}, \"id\":1}")
 }

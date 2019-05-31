@@ -3,14 +3,17 @@ package jsonrpc
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/gumeniukcom/golang-jsonrpc2/structs"
 )
 
 //JSONRPC container for jsonrpc
 type JSONRPC struct {
-	errors  ErrorMessages
-	methods RPCMethods
+	errors             ErrorMessages
+	methods            RPCMethods
+	globalInterceptors InterceptorCallMethods
+	defaultTimeOut     time.Duration
 }
 
 // New creates new instance of JSONRPC
@@ -18,14 +21,23 @@ func New() *JSONRPC {
 
 	return &JSONRPC{
 		errors: ErrorMessages{
-			ParseErrorCode:          "parse error. not well formed",
-			InvalidRequestErrorCode: "invalid Request, not conforming to spec",
-			MethodNotFoundErrorCode: "requested method not found",
-			InvalidParamsErrorCode:  "invalid method parameterss",
-			InternalErrorCode:       "internal error",
+			ParseErrorCode:          "parse_error_not_well_formed",
+			InvalidRequestErrorCode: "invalid_request_not_conforming_to_spec",
+			MethodNotFoundErrorCode: "requested_method_not_found",
+			InvalidParamsErrorCode:  "invalid_method_parameters",
+			InternalErrorCode:       "internal_error",
+			MethodNotImplemented:    "method_not_implemented",
+			RequestTimeLimit:        "request_time_limit",
 		},
-		methods: RPCMethods{},
+		methods:            RPCMethods{},
+		globalInterceptors: InterceptorCallMethods{},
+		defaultTimeOut:     30,
 	}
+}
+
+//SetDefaultTimeOut set timeout for func run
+func (j *JSONRPC) SetDefaultTimeOut(timeout int) {
+	j.defaultTimeOut = time.Duration(timeout)
 }
 
 // call method for call function from registry
@@ -36,6 +48,11 @@ func (j *JSONRPC) call(
 	data json.RawMessage,
 	id interface{},
 ) *structs.Response {
+	ctx, code, err := j.callGlobalInterceptors(ctx)
+	if err != nil {
+		return j.NewError(ctx, err, code, id)
+	}
+
 	method, ok := j.methods[methodName]
 	if !ok {
 		return j.NewError(ctx, nil, MethodNotFoundErrorCode, id)
