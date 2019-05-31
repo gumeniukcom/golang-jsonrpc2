@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/gumeniukcom/golang-jsonrpc2/structs"
 )
@@ -45,12 +47,27 @@ func (j *JSONRPC) HandleRPCJsonRawMessage(ctx context.Context, data json.RawMess
 }
 
 // HandleRPC make rpc request
-// TODO: think about timeout
 func (j *JSONRPC) HandleRPC(ctx context.Context, data *structs.Request) *structs.Response {
-	if err := validateRequest(data); err != nil {
-		return j.NewError(ctx, err, InvalidRequestErrorCode, data.ID)
+	ctxt, canc := context.WithTimeout(ctx, j.defaultTimeOut*time.Second)
+	defer canc()
+
+	c := make(chan *structs.Response)
+
+	go j.handleRPC(ctx, data, c)
+
+	select {
+	case <-ctxt.Done():
+		return j.NewError(ctx, fmt.Errorf("method '%s' proceed to long", data.Method), RequestTimeLimit, data.ID)
+	case resp := <-c:
+		return resp
 	}
-	return j.call(ctx, data.Method, data.Params, data.ID)
+}
+
+func (j *JSONRPC) handleRPC(ctx context.Context, data *structs.Request, c chan *structs.Response) {
+	if err := validateRequest(data); err != nil {
+		c <- j.NewError(ctx, err, InvalidRequestErrorCode, data.ID)
+	}
+	c <- j.call(ctx, data.Method, data.Params, data.ID)
 }
 
 // HandleBatchRPC make batch rpc
@@ -60,10 +77,13 @@ func (j *JSONRPC) HandleBatchRPC(ctx context.Context, data structs.Requests) str
 	requestsChan := make(chan structs.Response, len(data))
 	wg := sync.WaitGroup{}
 
-	for _, r := range data {
+	for idx := range data {
 		wg.Add(1)
+		go func(ctxi context.Context, rr *structs.Request) {
+			defer wg.Done()
+			requestsChan <- *j.HandleRPC(ctxi, rr)
 
-		go j.HandleRPC(ctx, &r)
+		}(ctx, &data[idx])
 	}
 
 	wg.Wait()

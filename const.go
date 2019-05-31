@@ -25,4 +25,10 @@ const (
 
 	// OK : everything is ok
 	OK = 0
+
+	//MethodNotImplemented : use for develop method
+	MethodNotImplemented = -32604
+
+	//RequestTimeLimit : tooooo long
+	RequestTimeLimit = -32605
 )
