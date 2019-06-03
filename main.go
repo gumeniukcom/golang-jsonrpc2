@@ -48,7 +48,7 @@ func (j *JSONRPC) call(
 	data json.RawMessage,
 	id interface{},
 ) *structs.Response {
-	ctx, code, err := j.callGlobalInterceptors(ctx)
+	ctx, code, err := j.callGlobalInterceptors(ctx, methodName, data, id)
 	if err != nil {
 		return j.NewError(ctx, err, code, id)
 	}
