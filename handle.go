@@ -57,15 +57,15 @@ func (j *JSONRPC) HandleRPC(ctx context.Context, data *structs.Request) *structs
 
 	select {
 	case <-ctxt.Done():
-		return j.NewError(ctx, fmt.Errorf("method '%s' proceed to long", data.Method), RequestTimeLimit, data.ID)
+		return j.Error(ctx, fmt.Errorf("method '%s' proceed to long", data.Method), RequestTimeLimit, data.ID)
 	case resp := <-c:
 		return resp
 	}
 }
 
 func (j *JSONRPC) handleRPC(ctx context.Context, data *structs.Request, c chan *structs.Response) {
-	if err := validateRequest(data); err != nil {
-		c <- j.NewError(ctx, err, InvalidRequestErrorCode, data.ID)
+	if err := validateRequest(ctx, data); err != nil {
+		c <- j.Error(ctx, err, InvalidRequestErrorCode, data.ID)
 	}
 	c <- j.call(ctx, data.Method, data.Params, data.ID)
 }
@@ -96,8 +96,8 @@ func (j *JSONRPC) HandleBatchRPC(ctx context.Context, data structs.Requests) str
 	return fullResponses
 }
 
-func validateRequest(data *structs.Request) error {
-	if data.Version != JSONRPCVersion {
+func validateRequest(ctx context.Context, data *structs.Request) error {
+	if data.Version != Version {
 		return errors.New("not valid version")
 	}
 

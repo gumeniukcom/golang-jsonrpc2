@@ -24,8 +24,8 @@ func (j *JSONRPC) RegisterError(code int, msg string) error {
 	return nil
 }
 
-// NewError is method for create response with error code
-func (j *JSONRPC) NewError(
+// Error is method for create response with error code
+func (j *JSONRPC) Error(
 	ctx context.Context,
 	err error,
 	errorCode int,
@@ -36,13 +36,13 @@ func (j *JSONRPC) NewError(
 		err = fmt.Errorf("")
 	}
 	if !ok {
-		return newError(j.errors[InternalErrorCode], InternalErrorCode, err.Error(), id)
+		return newError(ctx, j.errors[InternalErrorCode], InternalErrorCode, err.Error(), id)
 	}
-	return newError(errMsg, errorCode, err.Error(), id)
+	return newError(ctx, errMsg, errorCode, err.Error(), id)
 }
 
-func newError(errMsg string, errorCode int, info string, id interface{}) *structs.Response {
-	return newResponse(id, nil, &structs.Error{
+func newError(ctx context.Context, errMsg string, errorCode int, info string, id interface{}) *structs.Response {
+	return Response(ctx, id, nil, &structs.Error{
 		Code:    errorCode,
 		Message: errMsg,
 		Data:    info,

@@ -1,9 +1,9 @@
 package jsonrpc
 
 const (
-	// JSONRPCVersion const for define version of protocol
+	// Version const for define version of protocol
 	// @see https://www.jsonrpc.org/specification#request_object
-	JSONRPCVersion = "2.0"
+	Version = "2.0"
 )
 
 // @see http://xmlrpc-epi.sourceforge.net/specs/rfc.fault_codes.php

@@ -31,7 +31,7 @@ func TestJSONRPC_RegisterError(t *testing.T) {
 func TestJSONRPC_NewError(t *testing.T) {
 	j := New()
 
-	resp := j.NewError(context.Background(), fmt.Errorf("foobar"), InternalErrorCode, 1)
+	resp := j.Error(context.Background(), fmt.Errorf("foobar"), InternalErrorCode, 1)
 
 	if resp.Error == nil {
 		t.Errorf("Should get with error code \"%d\"", InternalErrorCode)

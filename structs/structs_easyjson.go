@@ -58,9 +58,7 @@ func easyjson6a975c40DecodeGithubComGumeniukcomGolangJsonrpc2Structs(in *jlexer.
 				if out.Error == nil {
 					out.Error = new(Error)
 				}
-				if data := in.Raw(); in.Ok() {
-					in.AddError((*out.Error).UnmarshalJSON(data))
-				}
+				(*out.Error).UnmarshalEasyJSON(in)
 			}
 		case "id":
 			if m, ok := out.ID.(easyjson.Unmarshaler); ok {
@@ -112,7 +110,7 @@ func easyjson6a975c40EncodeGithubComGumeniukcomGolangJsonrpc2Structs(out *jwrite
 		} else {
 			out.RawString(prefix)
 		}
-		out.Raw((*in.Error).MarshalJSON())
+		(*in.Error).MarshalEasyJSON(out)
 	}
 	{
 		const prefix string = ",\"id\":"
@@ -174,9 +172,7 @@ func easyjson6a975c40DecodeGithubComGumeniukcomGolangJsonrpc2Structs1(in *jlexer
 		}
 		for !in.IsDelim(']') {
 			var v1 Request
-			if data := in.Raw(); in.Ok() {
-				in.AddError((v1).UnmarshalJSON(data))
-			}
+			(v1).UnmarshalEasyJSON(in)
 			*out = append(*out, v1)
 			in.WantComma()
 		}
@@ -195,7 +191,7 @@ func easyjson6a975c40EncodeGithubComGumeniukcomGolangJsonrpc2Structs1(out *jwrit
 			if v2 > 0 {
 				out.RawByte(',')
 			}
-			out.Raw((v3).MarshalJSON())
+			(v3).MarshalEasyJSON(out)
 		}
 		out.RawByte(']')
 	}
@@ -470,9 +466,7 @@ func easyjson6a975c40DecodeGithubComGumeniukcomGolangJsonrpc2Structs4(in *jlexer
 		}
 		for !in.IsDelim(']') {
 			var v4 Response
-			if data := in.Raw(); in.Ok() {
-				in.AddError((v4).UnmarshalJSON(data))
-			}
+			(v4).UnmarshalEasyJSON(in)
 			*out = append(*out, v4)
 			in.WantComma()
 		}
@@ -491,7 +485,7 @@ func easyjson6a975c40EncodeGithubComGumeniukcomGolangJsonrpc2Structs4(out *jwrit
 			if v5 > 0 {
 				out.RawByte(',')
 			}
-			out.Raw((v6).MarshalJSON())
+			(v6).MarshalEasyJSON(out)
 		}
 		out.RawByte(']')
 	}
