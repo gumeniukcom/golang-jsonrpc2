@@ -99,7 +99,7 @@ func TestJSONRPC_HandleRPC(t *testing.T) {
 	sendData := "{\"a\":3, \"bb\":5}"
 	//resp := j.call(ctx, methodName, []byte(sendData), callID)
 	resp := j.HandleRPC(ctx, &structs.Request{
-		Version: JSONRPCVersion,
+		Version: Version,
 		Method:  "sum",
 		Params:  []byte(sendData),
 		ID:      23,
@@ -195,13 +195,13 @@ func TestJSONRPC_HandleBatchRPC(t *testing.T) {
 	requests := structs.Requests{}
 
 	requests = append(requests, structs.Request{
-		Version: JSONRPCVersion,
+		Version: Version,
 		Method:  "sum2",
 		Params:  []byte(sendData2),
 		ID:      24,
 	})
 	requests = append(requests, structs.Request{
-		Version: JSONRPCVersion,
+		Version: Version,
 		Method:  "sum",
 		Params:  []byte(sendData),
 		ID:      23,
@@ -310,13 +310,13 @@ func TestJSONRPC_HandleBatchRPCWithTimeOut(t *testing.T) {
 	requests := structs.Requests{}
 
 	requests = append(requests, structs.Request{
-		Version: JSONRPCVersion,
+		Version: Version,
 		Method:  "sum2",
 		Params:  []byte(sendData2),
 		ID:      24,
 	})
 	requests = append(requests, structs.Request{
-		Version: JSONRPCVersion,
+		Version: Version,
 		Method:  "sum",
 		Params:  []byte(sendData),
 		ID:      23,

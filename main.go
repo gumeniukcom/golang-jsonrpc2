@@ -50,30 +50,17 @@ func (j *JSONRPC) call(
 ) *structs.Response {
 	ctx, code, err := j.callGlobalInterceptors(ctx, methodName, data, id)
 	if err != nil {
-		return j.NewError(ctx, err, code, id)
+		return j.Error(ctx, err, code, id)
 	}
 
 	method, ok := j.methods[methodName]
 	if !ok {
-		return j.NewError(ctx, nil, MethodNotFoundErrorCode, id)
+		return j.Error(ctx, nil, MethodNotFoundErrorCode, id)
 	}
 	res, errCode, err := method(ctx, data)
 	if err != nil {
-		return j.NewError(ctx, err, errCode, id)
+		return j.Error(ctx, err, errCode, id)
 	}
 
-	return newResponse(id, &res, nil)
-}
-
-func newResponse(
-	id interface{},
-	data *json.RawMessage,
-	error *structs.Error,
-) *structs.Response {
-	return &structs.Response{
-		Version: JSONRPCVersion,
-		Result:  data,
-		Error:   error,
-		ID:      id,
-	}
+	return Response(ctx, id, &res, nil)
 }
