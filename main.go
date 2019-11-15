@@ -3,6 +3,7 @@ package jsonrpc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/gumeniukcom/golang-jsonrpc2/structs"
@@ -47,7 +48,13 @@ func (j *JSONRPC) call(
 	methodName string,
 	data json.RawMessage,
 	id interface{},
-) *structs.Response {
+) (resp *structs.Response) {
+	defer func() {
+		if r := recover(); r != nil {
+			resp = j.Error(ctx, fmt.Errorf("%#v", r), InternalErrorCode, id)
+		}
+	}()
+
 	ctx, code, err := j.callGlobalInterceptors(ctx, methodName, data, id)
 	if err != nil {
 		return j.Error(ctx, err, code, id)
@@ -62,5 +69,6 @@ func (j *JSONRPC) call(
 		return j.Error(ctx, err, errCode, id)
 	}
 
-	return Response(ctx, id, &res, nil)
+	resp = Response(ctx, id, &res, nil)
+	return resp
 }
