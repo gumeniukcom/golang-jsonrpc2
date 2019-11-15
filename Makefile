@@ -15,3 +15,5 @@ test:
 	GO111MODULE=on go test -mod vendor $(GOFILES)
 testv:
 	GO111MODULE=on go test -v -mod vendor $(GOFILES)
+testv:
+	GO111MODULE=on go test -v -mod vendor $(GOFILES)
