@@ -53,7 +53,7 @@ func (j *JSONRPC) HandleRPC(ctx context.Context, data *structs.Request) *structs
 
 	c := make(chan *structs.Response)
 
-	go j.handleRPC(ctx, data, c)
+	go j.handleRPC(ctxt, data, c)
 
 	select {
 	case <-ctxt.Done():
