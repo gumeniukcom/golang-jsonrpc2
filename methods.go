@@ -6,16 +6,18 @@ import (
 	"fmt"
 )
 
-//RPCMethod define function interface
+// RPCMethod defines the function signature for JSON-RPC methods.
 type RPCMethod func(ctx context.Context, data json.RawMessage) (json.RawMessage, int, error)
 
-//RPCMethods container for methods
+// RPCMethods is a registry of named RPC methods.
 type RPCMethods map[string]RPCMethod
 
-//RegisterMethod new method
+// RegisterMethod registers a new method in the RPC registry.
 func (j *JSONRPC) RegisterMethod(name string, method RPCMethod) error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
 	if _, ok := j.methods[name]; ok {
-		return fmt.Errorf("error with method \"%s\": it exist", name)
+		return fmt.Errorf("method %q already exists", name)
 	}
 	j.methods[name] = method
 	return nil

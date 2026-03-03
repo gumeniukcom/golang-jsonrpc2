@@ -9,23 +9,26 @@ import (
 func TestJSONRPC_RegisterError(t *testing.T) {
 	j := New()
 
-	err := j.RegisterError(-1, "minus 1")
-	if err != nil {
-		t.Errorf("Should register error with code -1, but got \"%v\"", err)
-		return
-	}
+	t.Run("register custom error", func(t *testing.T) {
+		err := j.RegisterError(-1, "minus 1")
+		if err != nil {
+			t.Errorf("should register error with code -1, but got %q", err)
+		}
+	})
 
-	err = j.RegisterError(-1, "minus 1")
-	if err == nil {
-		t.Errorf("Should NOT register error with code -1")
-		return
-	}
+	t.Run("duplicate error code", func(t *testing.T) {
+		err := j.RegisterError(-1, "minus 1")
+		if err == nil {
+			t.Errorf("should NOT register duplicate error with code -1")
+		}
+	})
 
-	err = j.RegisterError(InternalErrorCode, "int")
-	if err == nil {
-		t.Errorf("Should NOT register error code \"%d\"", InternalErrorCode)
-		return
-	}
+	t.Run("reserved error code", func(t *testing.T) {
+		err := j.RegisterError(InternalErrorCode, "int")
+		if err == nil {
+			t.Errorf("should NOT register reserved error code %d", InternalErrorCode)
+		}
+	})
 }
 
 func TestJSONRPC_NewError(t *testing.T) {
@@ -34,12 +37,11 @@ func TestJSONRPC_NewError(t *testing.T) {
 	resp := j.Error(context.Background(), fmt.Errorf("foobar"), InternalErrorCode, 1)
 
 	if resp.Error == nil {
-		t.Errorf("Should get with error code \"%d\"", InternalErrorCode)
+		t.Errorf("should get response with error code %d", InternalErrorCode)
 		return
 	}
 
 	if resp.Error.Code != InternalErrorCode {
-		t.Errorf("Should get with error code \"%d\", but got: %d", InternalErrorCode, resp.Error.Code)
-		return
+		t.Errorf("should get error code %d, but got: %d", InternalErrorCode, resp.Error.Code)
 	}
 }

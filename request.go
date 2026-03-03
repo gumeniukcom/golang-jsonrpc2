@@ -1,20 +1,18 @@
 package jsonrpc
 
 import (
-	"context"
+	"github.com/google/uuid"
 
-	"github.com/gumeniukcom/golang-jsonrpc2/structs"
-
-	"github.com/satori/go.uuid"
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/structs"
 )
 
-//Request return request instance
-func Request(ctx context.Context, methodName string, params ParamsDataMarshaller) (*structs.Request, error) {
+// NewRequest creates a new JSON-RPC request with a random UUID as the ID.
+func NewRequest(methodName string, params ParamsDataMarshaler) (*structs.Request, error) {
 	paramsBytes, err := params.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}
-	requestID := uuid.NewV4().String()
+	requestID := uuid.New().String()
 
 	req := &structs.Request{
 		Version: Version,
@@ -23,7 +21,7 @@ func Request(ctx context.Context, methodName string, params ParamsDataMarshaller
 		ID:      requestID,
 	}
 
-	err = validateRequest(ctx, req)
+	err = validateRequest(req)
 	if err != nil {
 		return nil, err
 	}

@@ -1,19 +1,21 @@
-all: easy fmt test metalint
+all: easy fmt lint test
 
-GOFILES=`go list ./... | grep -v vendor`
-
-metalint:
-	golint $(GOFILES)
-	gometalinter ./... --config=.gometalinter.json
+GOFILES = ./...
 
 easy:
-	easyjson --all structs/
+	cd structs && easyjson -all -pkg
 
 fmt:
 	go fmt $(GOFILES)
+
+lint:
+	golangci-lint run $(GOFILES)
+
 test:
-	GO111MODULE=on go test -mod vendor $(GOFILES)
+	go test $(GOFILES)
+
 testv:
-	GO111MODULE=on go test -v -mod vendor $(GOFILES)
-testv:
-	GO111MODULE=on go test -v -mod vendor $(GOFILES)
+	go test -v $(GOFILES)
+
+testrace:
+	go test -race $(GOFILES)

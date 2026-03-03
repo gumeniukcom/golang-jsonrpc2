@@ -5,26 +5,37 @@ import (
 	"encoding/json"
 )
 
-//InterceptorCallMethod interface for interceptor method
+// InterceptorCallMethod is the function signature for interceptors that run
+// before each method call. Interceptors can modify the context, return an
+// error code to abort, or return nil to continue the chain.
 type InterceptorCallMethod func(ctx context.Context,
 	methodName string,
 	data json.RawMessage,
-	id interface{}) (context.Context, int, error)
+	id any) (context.Context, int, error)
 
-//InterceptorCallMethods registry for global interceptors
+// InterceptorCallMethods is a slice of global interceptors.
 type InterceptorCallMethods []InterceptorCallMethod
 
-//RegisterGlobalInterceptorCall register global interceptors
+// RegisterGlobalInterceptorCall appends an interceptor to the global chain.
 func (j *JSONRPC) RegisterGlobalInterceptorCall(method InterceptorCallMethod) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
 	j.globalInterceptors = append(j.globalInterceptors, method)
 }
 
 func (j *JSONRPC) callGlobalInterceptors(ctx context.Context,
 	methodName string,
 	data json.RawMessage,
-	id interface{}) (context.Context, int, error) {
-	for _, interceptor := range j.globalInterceptors {
-		ctx, code, err := interceptor(ctx, methodName, data, id)
+	id any) (context.Context, int, error) {
+	j.mu.RLock()
+	interceptors := make(InterceptorCallMethods, len(j.globalInterceptors))
+	copy(interceptors, j.globalInterceptors)
+	j.mu.RUnlock()
+
+	var code int
+	var err error
+	for _, interceptor := range interceptors {
+		ctx, code, err = interceptor(ctx, methodName, data, id)
 		if err != nil {
 			return ctx, code, err
 		}

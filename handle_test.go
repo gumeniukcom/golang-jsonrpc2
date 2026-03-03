@@ -4,55 +4,51 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gumeniukcom/golang-jsonrpc2/structs"
 	"testing"
 	"time"
+
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/structs"
 )
 
-func TestJSONRPC_HandleRPCJsonRawMessage(t *testing.T) {
+func TestJSONRPC_HandleRPCJSONRawMessage(t *testing.T) {
 	j := New()
 	ctx := context.Background()
-	i := 0
 
-	res := j.HandleRPCJsonRawMessage(ctx, []byte(""))
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"empty input", "", string(errorInvalidRequest())},
+		{"open bracket only", "[", string(errorInvalidRequest())},
+		{"mismatched brackets", "[}", string(errorInvalidRequest())},
+		{"invalid batch", "[foo}", string(errorInvalidRequest())},
+		{"invalid object", "{foo}", string(errorInvalidRequest())},
+		{
+			"method not found",
+			`{"jsonrpc":"2.0", "method":"foo", "params":{}, "id":2}`,
+			`{"jsonrpc":"2.0","error":{"code":-32601,"message":"requested_method_not_found","data":""},"id":2}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := j.HandleRPCJSONRawMessage(ctx, []byte(tt.input))
+			if string(res) != tt.expected {
+				t.Errorf("expected %s, but got %s", tt.expected, string(res))
+			}
+		})
+	}
+}
+
+func TestJSONRPC_HandleRPCJSONRawMessage_EmptyBatch(t *testing.T) {
+	j := New()
+	ctx := context.Background()
+
+	res := j.HandleRPCJSONRawMessage(ctx, []byte("[]"))
 	if string(res) != string(errorInvalidRequest()) {
-		t.Errorf("[%d] Expected invalid request, but got \"%s\"", i, string(res))
+		t.Errorf("expected invalid request for empty batch, but got %s", string(res))
 	}
-	i++
-
-	res = j.HandleRPCJsonRawMessage(ctx, []byte("["))
-	if string(res) != string(errorInvalidRequest()) {
-		t.Errorf("[%d]Expected invalid request, but got \"%s\"", i, string(res))
-	}
-	i++
-
-	res = j.HandleRPCJsonRawMessage(ctx, []byte("[}"))
-	if string(res) != string(errorInvalidRequest()) {
-		t.Errorf("[%d]Expected invalid request, but got \"%s\"", i, string(res))
-	}
-	i++
-
-	res = j.HandleRPCJsonRawMessage(ctx, []byte("[foo}"))
-	if string(res) != string(errorInvalidRequest()) {
-		t.Errorf("[%d]Expected invalid request, but got \"%s\"", i, string(res))
-	}
-	i++
-
-	res = j.HandleRPCJsonRawMessage(ctx, []byte("{foo}"))
-	if string(res) != string(errorInvalidRequest()) {
-		t.Errorf("[%d]Expected invalid request, but got \"%s\"", i, string(res))
-	}
-	i++
-
-	res = j.HandleRPCJsonRawMessage(ctx, []byte("{\"jsonrpc\":\"2.0\", \"method\":\"foo\", \"params\":{}, \"id\":2}"))
-	if len(res) == 0 {
-		t.Errorf("[%d] Empty response", i)
-	}
-	if string(res) != "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32601,\"message\":\"requested_method_not_found\",\"data\":\"\"},\"id\":2}" {
-		t.Errorf("[%d]Expected method not found, but got \"%s\"", i, string(res))
-	}
-	//i++
-	//t.Logf("%#v", string(res))
 }
 
 func TestJSONRPC_HandleRPC(t *testing.T) {
@@ -85,19 +81,14 @@ func TestJSONRPC_HandleRPC(t *testing.T) {
 		}
 		return mdata, 0, nil
 	}
-	methodName := "sum"
-	//callID := 1
-	err := j.RegisterMethod(methodName, m)
 
+	err := j.RegisterMethod("sum", m)
 	if err != nil {
-		t.Errorf("should register , but got %v", err)
-		return
+		t.Fatalf("should register, but got %v", err)
 	}
 
 	ctx := context.Background()
-
-	sendData := "{\"a\":3, \"bb\":5}"
-	//resp := j.call(ctx, methodName, []byte(sendData), callID)
+	sendData := `{"a":3, "bb":5}`
 	resp := j.HandleRPC(ctx, &structs.Request{
 		Version: Version,
 		Method:  "sum",
@@ -105,11 +96,11 @@ func TestJSONRPC_HandleRPC(t *testing.T) {
 		ID:      23,
 	})
 	if resp.Error != nil {
-		t.Errorf("Expected empty error, but got code=%v", resp.Error.Code)
+		t.Errorf("expected no error, but got code=%v", resp.Error.Code)
 		return
 	}
-	if string(*resp.Result) != "{\"c\":8}" {
-		t.Errorf("Expected %#v, but got %#v", "{\"c\":8}", string(*resp.Result))
+	if string(*resp.Result) != `{"c":8}` {
+		t.Errorf("expected %q, but got %q", `{"c":8}`, string(*resp.Result))
 	}
 }
 
@@ -143,12 +134,10 @@ func TestJSONRPC_HandleBatchRPC(t *testing.T) {
 		}
 		return mdata, 0, nil
 	}
-	methodName := "sum"
-	//callID := 1
-	err := j.RegisterMethod(methodName, m)
+
+	err := j.RegisterMethod("sum", m)
 	if err != nil {
-		t.Error(err)
-		return
+		t.Fatalf("should register, but got %v", err)
 	}
 
 	mm := func(ctx context.Context, data json.RawMessage) (json.RawMessage, int, error) {
@@ -173,64 +162,36 @@ func TestJSONRPC_HandleBatchRPC(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		return mdata, 0, nil
 	}
-	methodName2 := "sum2"
 
-	err = j.RegisterMethod(methodName2, mm)
+	err = j.RegisterMethod("sum2", mm)
 	if err != nil {
-		t.Error(err)
-		return
-	}
-
-	if err != nil {
-		t.Errorf("should register , but got %v", err)
-		return
+		t.Fatalf("should register, but got %v", err)
 	}
 
 	ctx := context.Background()
 
-	sendData := "{\"a\":3, \"bb\":5}"
-	sendData2 := "{\"a\":3, \"bb\":8}"
-	//resp := j.call(ctx, methodName, []byte(sendData), callID)
+	requests := structs.Requests{
+		structs.Request{Version: Version, Method: "sum2", Params: []byte(`{"a":3, "bb":8}`), ID: 24},
+		structs.Request{Version: Version, Method: "sum", Params: []byte(`{"a":3, "bb":5}`), ID: 23},
+	}
 
-	requests := structs.Requests{}
-
-	requests = append(requests, structs.Request{
-		Version: Version,
-		Method:  "sum2",
-		Params:  []byte(sendData2),
-		ID:      24,
-	})
-	requests = append(requests, structs.Request{
-		Version: Version,
-		Method:  "sum",
-		Params:  []byte(sendData),
-		ID:      23,
-	})
 	resp := j.HandleBatchRPC(ctx, requests)
-	if len(resp) == 0 {
-		t.Errorf("Expected %v responses, but got %v", len(requests), len(resp))
+	if len(resp) != len(requests) {
+		t.Errorf("expected %v responses, but got %v", len(requests), len(resp))
 		return
 	}
-	t.Logf("%v", resp)
 
 	for idx := range resp {
-		//if resp[idx].ID == 24&& resp.re
-		t.Logf("%#v", resp[idx].ID)
-		if resp[idx].Result != nil {
-
-			t.Logf("%#v", string(*resp[idx].Result))
-		}
 		if resp[idx].Error != nil {
-			t.Errorf("expected nil error, got '%v'", *resp[idx].Error)
+			t.Errorf("expected nil error for id=%v, got %v", resp[idx].ID, *resp[idx].Error)
 		}
 	}
-
 }
 
 func TestJSONRPC_HandleBatchRPCWithTimeOut(t *testing.T) {
 	j := New()
+	j.SetDefaultTimeOut(2 * time.Second)
 
-	j.SetDefaultTimeOut(2)
 	type income struct {
 		A int `json:"a"`
 		B int `json:"bb"`
@@ -258,12 +219,10 @@ func TestJSONRPC_HandleBatchRPCWithTimeOut(t *testing.T) {
 		}
 		return mdata, 0, nil
 	}
-	methodName := "sum"
-	//callID := 1
-	err := j.RegisterMethod(methodName, m)
+
+	err := j.RegisterMethod("sum", m)
 	if err != nil {
-		t.Error(err)
-		return
+		t.Fatalf("should register, but got %v", err)
 	}
 
 	mm := func(ctx context.Context, data json.RawMessage) (json.RawMessage, int, error) {
@@ -288,59 +247,28 @@ func TestJSONRPC_HandleBatchRPCWithTimeOut(t *testing.T) {
 		time.Sleep(3 * time.Second)
 		return mdata, 0, nil
 	}
-	methodName2 := "sum2"
 
-	err = j.RegisterMethod(methodName2, mm)
+	err = j.RegisterMethod("sum2", mm)
 	if err != nil {
-		t.Error(err)
-		return
-	}
-
-	if err != nil {
-		t.Errorf("should register , but got %v", err)
-		return
+		t.Fatalf("should register, but got %v", err)
 	}
 
 	ctx := context.Background()
 
-	sendData := "{\"a\":3, \"bb\":5}"
-	sendData2 := "{\"a\":3, \"bb\":8}"
-	//resp := j.call(ctx, methodName, []byte(sendData), callID)
+	requests := structs.Requests{
+		structs.Request{Version: Version, Method: "sum2", Params: []byte(`{"a":3, "bb":8}`), ID: float64(24)},
+		structs.Request{Version: Version, Method: "sum", Params: []byte(`{"a":3, "bb":5}`), ID: float64(23)},
+	}
 
-	requests := structs.Requests{}
-
-	requests = append(requests, structs.Request{
-		Version: Version,
-		Method:  "sum2",
-		Params:  []byte(sendData2),
-		ID:      24,
-	})
-	requests = append(requests, structs.Request{
-		Version: Version,
-		Method:  "sum",
-		Params:  []byte(sendData),
-		ID:      23,
-	})
 	resp := j.HandleBatchRPC(ctx, requests)
-	if len(resp) == 0 {
-		t.Errorf("Expected %v responses, but got %v", len(requests), len(resp))
+	if len(resp) != len(requests) {
+		t.Errorf("expected %v responses, but got %v", len(requests), len(resp))
 		return
 	}
-	t.Logf("%v", resp)
 
 	for idx := range resp {
-		//if resp[idx].ID == 24&& resp.re
-		t.Logf("%#v", resp[idx].ID)
-		if resp[idx].Result != nil {
-
-			t.Logf("%#v", string(*resp[idx].Result))
-		}
-		if resp[idx].Error != nil {
-
-			t.Logf("%#v", *resp[idx].Error)
-		}
-		if resp[idx].ID == 24 && resp[idx].Error == nil {
-			t.Errorf("expected timeout error for resp id %d", 24)
+		if resp[idx].ID == float64(24) && resp[idx].Error == nil {
+			t.Errorf("expected timeout error for resp id 24")
 		}
 	}
 }

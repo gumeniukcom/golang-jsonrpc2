@@ -1,0 +1,32 @@
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
+    - misspell
+    - gofmt
+    - goimports
+    - unconvert
+    - unparam
+    - gocritic
+    - revive
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+  misspell:
+    locale: US
+  goimports:
+    local-prefixes: github.com/gumeniukcom/golang-jsonrpc2
+
+issues:
+  exclude-dirs:
+    - vendor
+  exclude-generated: strict
+  max-issues-per-linter: 50
+  max-same-issues: 5

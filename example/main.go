@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
-	jrpc "github.com/gumeniukcom/golang-jsonrpc2"
+	jrpc "github.com/gumeniukcom/golang-jsonrpc2/v2"
 )
 
 func main() {
-
 	serv := jrpc.New()
 
 	if err := serv.RegisterMethod("sum", sum); err != nil {
@@ -19,16 +18,15 @@ func main() {
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.Background()
-		body, err := ioutil.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			panic(err)
 		}
 		defer r.Body.Close()
 
-		w.Header().Set("Content-Type", "applicaition/json")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if _, err = w.Write(serv.HandleRPCJsonRawMessage(ctx, body)); err != nil {
+		if _, err = w.Write(serv.HandleRPCJSONRawMessage(r.Context(), body)); err != nil {
 			panic(err)
 		}
 	})
@@ -46,7 +44,7 @@ type outcome struct {
 	Sum int `json:"sum"`
 }
 
-func sum(ctx context.Context, data json.RawMessage) (json.RawMessage, int, error) {
+func sum(_ context.Context, data json.RawMessage) (json.RawMessage, int, error) {
 	if data == nil {
 		return nil, jrpc.InvalidRequestErrorCode, fmt.Errorf("empty request")
 	}
