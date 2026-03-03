@@ -52,7 +52,7 @@ func TestAll(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -116,7 +116,7 @@ func TestCallPanic(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		defer r.Body.Close()
+		defer func() { _ = r.Body.Close() }()
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
