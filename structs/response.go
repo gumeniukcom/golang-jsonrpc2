@@ -2,23 +2,24 @@ package structs
 
 import "encoding/json"
 
-// Response struct for full jsonrpc response
-// @see https://www.jsonrpc.org/specification#response_object
+// Response represents a JSON-RPC 2.0 response object.
+// See https://www.jsonrpc.org/specification#response_object
 type Response struct {
 	Version string           `json:"jsonrpc"`
 	Result  *json.RawMessage `json:"result,omitempty"`
 	Error   *Error           `json:"error,omitempty"`
-	ID      interface{}      `json:"id"`
+	ID      any              `json:"id"`
 }
 
-// Error struct for JSONRPC2 error
-// @see https://www.jsonrpc.org/specification#error_object
+// Error represents a JSON-RPC 2.0 error object.
+// See https://www.jsonrpc.org/specification#error_object
 type Error struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
-// BatchFullResponse is type for batch response
+// BatchFullResponse is a batch of JSON-RPC responses.
+//
 //easyjson:json
 type BatchFullResponse []Response

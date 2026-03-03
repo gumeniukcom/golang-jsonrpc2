@@ -1,34 +1,35 @@
 package jsonrpc
 
 const (
-	// Version const for define version of protocol
-	// @see https://www.jsonrpc.org/specification#request_object
+	// Version defines the JSON-RPC protocol version.
+	// See https://www.jsonrpc.org/specification#request_object
 	Version = "2.0"
 )
 
-// @see http://xmlrpc-epi.sourceforge.net/specs/rfc.fault_codes.php
+// Error codes per JSON-RPC 2.0 specification.
+// See http://xmlrpc-epi.sourceforge.net/specs/rfc.fault_codes.php
 const (
-	// ParseErrorCode : parse error. not well formed
+	// ParseErrorCode indicates an invalid JSON was received.
 	ParseErrorCode = -32700
 
-	// InvalidRequestErrorCode : Invalid Request
+	// InvalidRequestErrorCode indicates the request is not a valid JSON-RPC object.
 	InvalidRequestErrorCode = -32600
 
-	// MethodNotFoundErrorCode : requested method not found
+	// MethodNotFoundErrorCode indicates the requested method does not exist.
 	MethodNotFoundErrorCode = -32601
 
-	// InvalidParamsErrorCode : invalid method parameters
+	// InvalidParamsErrorCode indicates invalid method parameters.
 	InvalidParamsErrorCode = -32602
 
-	// InternalErrorCode : Internal error
+	// InternalErrorCode indicates an internal JSON-RPC error.
 	InternalErrorCode = -32603
 
-	// OK : everything is ok
+	// OK indicates the operation completed successfully.
 	OK = 0
 
-	//MethodNotImplemented : use for develop method
+	// MethodNotImplemented indicates the method is not yet implemented.
 	MethodNotImplemented = -32604
 
-	//RequestTimeLimit : tooooo long
+	// RequestTimeLimit indicates the request exceeded the time limit.
 	RequestTimeLimit = -32605
 )

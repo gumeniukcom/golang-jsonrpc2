@@ -1,8 +1,10 @@
-module github.com/gumeniukcom/golang-jsonrpc2
+module github.com/gumeniukcom/golang-jsonrpc2/v2
+
+go 1.25
 
 require (
-	github.com/mailru/easyjson v0.0.0-20190221075403-6243d8e04c3f
-	github.com/satori/go.uuid v1.2.0
+	github.com/google/uuid v1.6.0
+	github.com/mailru/easyjson v0.9.1
 )
 
-go 1.13
+require github.com/josharian/intern v1.0.0 // indirect

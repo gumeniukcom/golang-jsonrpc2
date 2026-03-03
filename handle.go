@@ -6,14 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
-	"github.com/gumeniukcom/golang-jsonrpc2/structs"
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/structs"
 )
 
-// HandleRPCJsonRawMessage receive jsonRaw , parse, magic and send jsonRaw
-func (j *JSONRPC) HandleRPCJsonRawMessage(ctx context.Context, data json.RawMessage) json.RawMessage {
-
+// HandleRPCJSONRawMessage parses raw JSON, dispatches single or batch requests,
+// and returns the serialized JSON-RPC response.
+func (j *JSONRPC) HandleRPCJSONRawMessage(ctx context.Context, data json.RawMessage) json.RawMessage {
 	reqLen := len(data)
 	if reqLen < 2 {
 		return errorInvalidRequest()
@@ -22,6 +21,9 @@ func (j *JSONRPC) HandleRPCJsonRawMessage(ctx context.Context, data json.RawMess
 	if data[0] == '[' && data[reqLen-1] == ']' {
 		var batchReq structs.Requests
 		if err := batchReq.UnmarshalJSON(data); err != nil {
+			return errorInvalidRequest()
+		}
+		if len(batchReq) == 0 {
 			return errorInvalidRequest()
 		}
 		batchResp := j.HandleBatchRPC(ctx, batchReq)
@@ -46,31 +48,36 @@ func (j *JSONRPC) HandleRPCJsonRawMessage(ctx context.Context, data json.RawMess
 	return errorInvalidRequest()
 }
 
-// HandleRPC make rpc request
+// HandleRPC executes a single JSON-RPC request with the configured timeout.
 func (j *JSONRPC) HandleRPC(ctx context.Context, data *structs.Request) *structs.Response {
-	ctxt, canc := context.WithTimeout(ctx, j.defaultTimeOut*time.Second)
+	j.mu.RLock()
+	timeout := j.defaultTimeOut
+	j.mu.RUnlock()
+
+	ctxt, canc := context.WithTimeout(ctx, timeout)
 	defer canc()
 
-	c := make(chan *structs.Response)
+	c := make(chan *structs.Response, 1)
 
 	go j.handleRPC(ctxt, data, c)
 
 	select {
 	case <-ctxt.Done():
-		return j.Error(ctx, fmt.Errorf("method '%s' proceed to long", data.Method), RequestTimeLimit, data.ID)
+		return j.Error(ctx, fmt.Errorf("method %q took too long", data.Method), RequestTimeLimit, data.ID)
 	case resp := <-c:
 		return resp
 	}
 }
 
 func (j *JSONRPC) handleRPC(ctx context.Context, data *structs.Request, c chan *structs.Response) {
-	if err := validateRequest(ctx, data); err != nil {
+	if err := validateRequest(data); err != nil {
 		c <- j.Error(ctx, err, InvalidRequestErrorCode, data.ID)
+		return
 	}
 	c <- j.call(ctx, data.Method, data.Params, data.ID)
 }
 
-// HandleBatchRPC make batch rpc
+// HandleBatchRPC executes a batch of JSON-RPC requests concurrently.
 func (j *JSONRPC) HandleBatchRPC(ctx context.Context, data structs.Requests) structs.BatchFullResponse {
 	var fullResponses structs.BatchFullResponse
 
@@ -82,7 +89,6 @@ func (j *JSONRPC) HandleBatchRPC(ctx context.Context, data structs.Requests) str
 		go func(ctxi context.Context, rr *structs.Request) {
 			defer wg.Done()
 			requestsChan <- *j.HandleRPC(ctxi, rr)
-
 		}(ctx, &data[idx])
 	}
 
@@ -96,7 +102,7 @@ func (j *JSONRPC) HandleBatchRPC(ctx context.Context, data structs.Requests) str
 	return fullResponses
 }
 
-func validateRequest(ctx context.Context, data *structs.Request) error {
+func validateRequest(data *structs.Request) error {
 	if data.Version != Version {
 		return errors.New("not valid version")
 	}
