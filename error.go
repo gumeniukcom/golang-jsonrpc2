@@ -3,7 +3,9 @@ package jsonrpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/gumeniukcom/golang-jsonrpc2/v2/structs"
 )
@@ -28,31 +30,73 @@ func (j *JSONRPC) RegisterError(code int, msg string) error {
 }
 
 // Error builds a JSON-RPC error response for the given error code and request ID.
+//
+// The error text is never serialized into the response: internal detail
+// (driver errors, wrapped messages, panic values) stays server-side and is
+// written to the configured logger instead. The only client-visible detail is
+// the Data field of a *RPCError in the error chain, whose Code is
+// authoritative and overrides errorCode. Unregistered codes degrade to
+// internal_error without data; the original code is logged.
 func (j *JSONRPC) Error(
 	ctx context.Context,
 	err error,
 	errorCode int,
 	id any,
 ) *structs.Response {
+	var data any
+	var rpcErr *RPCError
+	if errors.As(err, &rpcErr) && rpcErr != nil {
+		errorCode = rpcErr.Code
+		data = rpcErr.Data
+	}
+
 	j.mu.RLock()
-	errMsg, ok := j.errors[errorCode]
+	msg, ok := j.errors[errorCode]
 	internalMsg := j.errors[InternalErrorCode]
+	logger := j.logger
 	j.mu.RUnlock()
 
-	if err == nil {
-		err = fmt.Errorf("")
-	}
+	code := errorCode
 	if !ok {
-		return newError(internalMsg, InternalErrorCode, err.Error(), id)
+		if logger != nil {
+			logger.WarnContext(ctx, "jsonrpc: unregistered error code",
+				slog.Int("code", errorCode))
+		}
+		code = InternalErrorCode
+		msg = internalMsg
+		data = nil
 	}
-	return newError(errMsg, errorCode, err.Error(), id)
+
+	if err != nil && logger != nil {
+		logger.Log(ctx, levelForCode(code), "jsonrpc: error response",
+			slog.Int("code", code),
+			slog.Any("error", err),
+		)
+	}
+
+	return newError(msg, code, data, id)
 }
 
-func newError(errMsg string, errorCode int, info string, id any) *structs.Response {
+// levelForCode picks the server-side log level for an error response:
+// genuine server faults log at Error, timeouts at Warn, and client-caused or
+// expected application errors at Debug so a flood of bad requests cannot spam
+// the log at Error level.
+func levelForCode(code int) slog.Level {
+	switch code {
+	case InternalErrorCode:
+		return slog.LevelError
+	case RequestTimeLimit:
+		return slog.LevelWarn
+	default:
+		return slog.LevelDebug
+	}
+}
+
+func newError(errMsg string, errorCode int, data any, id any) *structs.Response {
 	return NewResponse(id, nil, &structs.Error{
 		Code:    errorCode,
 		Message: errMsg,
-		Data:    info,
+		Data:    data,
 	})
 }
 
@@ -63,4 +107,8 @@ func errorInternal() json.RawMessage {
 func errorInvalidRequest() json.RawMessage {
 	return []byte(
 		`{"jsonrpc":"2.0","error":{"code":-32600,"message":"invalid_request_not_conforming_to_spec"},"id":null}`)
+}
+
+func errorBatchTooLarge() json.RawMessage {
+	return []byte(`{"jsonrpc":"2.0","error":{"code":-32600,"message":"batch_too_large"},"id":null}`)
 }

@@ -1,10 +1,12 @@
 package jsonrpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -105,6 +107,8 @@ func TestCallPanic(t *testing.T) {
 	}
 
 	j := New()
+	var logBuf bytes.Buffer
+	j.SetLogger(slog.New(slog.NewTextHandler(&logBuf, nil)))
 
 	err := j.RegisterMethod("sum", sumMethod)
 	if err != nil {
@@ -134,7 +138,7 @@ func TestCallPanic(t *testing.T) {
 		{
 			name:     "panic recovery",
 			request:  `{"jsonrpc":"2.0", "id":1, "method":"sum", "params":{}}`,
-			response: `{"jsonrpc":"2.0","error":{"code":-32603,"message":"internal_error","data":"panic"},"id":1}`,
+			response: `{"jsonrpc":"2.0","error":{"code":-32603,"message":"internal_error"},"id":1}`,
 		},
 	}
 
@@ -153,6 +157,12 @@ func TestCallPanic(t *testing.T) {
 			resp := string(body)
 			if resp != tt.response {
 				t.Errorf("expected %q, got %q", tt.response, resp)
+			}
+
+			// The panic value must never reach the client, but it must be
+			// preserved server-side in the log.
+			if !strings.Contains(logBuf.String(), "panic") {
+				t.Errorf("recovered panic value must be logged, log: %q", logBuf.String())
 			}
 		})
 	}
