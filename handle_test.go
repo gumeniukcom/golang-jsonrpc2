@@ -27,7 +27,7 @@ func TestJSONRPC_HandleRPCJSONRawMessage(t *testing.T) {
 		{
 			"method not found",
 			`{"jsonrpc":"2.0", "method":"foo", "params":{}, "id":2}`,
-			`{"jsonrpc":"2.0","error":{"code":-32601,"message":"requested_method_not_found","data":""},"id":2}`,
+			`{"jsonrpc":"2.0","error":{"code":-32601,"message":"requested_method_not_found"},"id":2}`,
 		},
 	}
 
