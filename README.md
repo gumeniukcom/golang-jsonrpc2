@@ -116,6 +116,37 @@ err := jrpc.RegisterTyped(serv, "sum", func(ctx context.Context, p sumParams) (s
 A malformed `params` object yields `InvalidParamsErrorCode` automatically; any
 plain error returned by the handler maps to `InternalErrorCode`.
 
+## Introspection & documentation metadata
+
+`RegisterTyped` records the reflect types of `P` and `R` plus optional
+documentation metadata, so the same registry the server dispatches against can
+also describe itself — the source of truth for out-of-band schema generation
+(OpenRPC, OpenAPI, agent-facing docs) with no drift.
+
+```go
+err := jrpc.RegisterTyped(serv, "sum", sumHandler,
+	jrpc.WithSummary("Add two integers"),
+	jrpc.WithDescription("Returns the sum of a and b."),
+	jrpc.WithTags("math", "public"),
+	jrpc.WithErrors(jrpc.ErrorInfo{Code: -32602, Message: "invalid_method_parameters", Description: "a or b missing"}),
+	jrpc.WithExample("basic", sumParams{A: 3, B: 5}, sumResult{Sum: 8}),
+	jrpc.WithExtra("auth", "public"),
+)
+
+for _, m := range serv.Methods() { // sorted by name; slices/maps deep-copied
+	fmt.Println(m.Name, m.Params, m.Result, m.Summary)
+}
+```
+
+Options are additive and backward-compatible — `RegisterTyped(serv, name, fn)`
+without options behaves exactly as before. Slice options (`WithTags`,
+`WithErrors`, `WithExample`) accumulate across repeated calls. `Methods()`
+returns a name-sorted snapshot whose slices and `Extra` map are copied, so the
+caller may read and reorder freely. A method registered through the untyped
+`RegisterMethod` appears with a nil `Params`/`Result` (name-only); a typed
+method with `struct{}` params keeps that non-nil zero-field type, so a
+generator can distinguish "no parameters" from "no type information".
+
 ## Application errors and the `data` field
 
 Error texts are **never** sent to clients: internal detail (driver errors,
@@ -211,3 +242,12 @@ occupies a worker slot.
   now keep request order).
 - A response entry with unmarshalable `data` no longer destroys the whole
   batch: only that entry degrades to `internal_error`, keeping its id.
+
+## v2.2.0 changes
+
+- Added an introspectable method registry. `RegisterTyped` now records the
+  reflect types of `P`/`R` and accepts variadic `MethodOption`s (`WithSummary`,
+  `WithDescription`, `WithTags`, `WithDeprecated`, `WithErrors`, `WithExample`,
+  `WithExtra`); `Methods()` returns a name-sorted, defensively-copied snapshot
+  of `MethodInfo`. Backward compatible — existing `RegisterTyped(j, name, fn)`
+  calls and `RegisterMethod` (recorded name-only) are unchanged.
