@@ -17,6 +17,7 @@ type JSONRPC struct {
 	mu                 sync.RWMutex
 	errors             ErrorMessages
 	methods            RPCMethods
+	methodInfo         map[string]MethodInfo
 	globalInterceptors InterceptorCallMethods
 	defaultTimeOut     time.Duration
 	logger             *slog.Logger
@@ -38,6 +39,7 @@ func New() *JSONRPC {
 			RequestTimeLimit:        "request_time_limit",
 		},
 		methods:            RPCMethods{},
+		methodInfo:         map[string]MethodInfo{},
 		globalInterceptors: InterceptorCallMethods{},
 		defaultTimeOut:     30 * time.Second,
 		logger:             slog.Default(),

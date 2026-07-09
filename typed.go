@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 )
 
 // Typed wraps a strongly-typed handler into an RPCMethod, removing the
@@ -37,10 +38,22 @@ func Typed[P any, R any](fn func(ctx context.Context, params P) (R, error)) RPCM
 }
 
 // RegisterTyped registers a strongly-typed handler under the given method name.
+// It captures the reflect types of P and R and any documentation metadata from
+// opts into the introspectable registry (see MethodInfo and Methods), so the
+// server can describe itself for schema/documentation generation.
 func RegisterTyped[P any, R any](
 	j *JSONRPC,
 	name string,
 	fn func(ctx context.Context, params P) (R, error),
+	opts ...MethodOption,
 ) error {
-	return j.RegisterMethod(name, Typed(fn))
+	info := MethodInfo{
+		Name:   name,
+		Params: reflect.TypeOf((*P)(nil)).Elem(),
+		Result: reflect.TypeOf((*R)(nil)).Elem(),
+	}
+	for _, opt := range opts {
+		opt(&info)
+	}
+	return j.registerMethod(name, Typed(fn), info)
 }
