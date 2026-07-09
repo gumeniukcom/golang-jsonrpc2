@@ -18,23 +18,22 @@ type InterceptorCallMethods []InterceptorCallMethod
 
 // RegisterGlobalInterceptorCall appends an interceptor to the global chain.
 func (j *JSONRPC) RegisterGlobalInterceptorCall(method InterceptorCallMethod) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	j.globalInterceptors = append(j.globalInterceptors, method)
+	_ = j.updateConfig(func(c *config) error {
+		c.globalInterceptors = append(c.globalInterceptors, method)
+		return nil
+	})
 }
 
-func (j *JSONRPC) callGlobalInterceptors(ctx context.Context,
+// callGlobalInterceptors runs the chain from an immutable config snapshot, so
+// no locking or defensive copy is needed.
+func callGlobalInterceptors(ctx context.Context,
+	cfg *config,
 	methodName string,
 	data json.RawMessage,
 	id any) (context.Context, int, error) {
-	j.mu.RLock()
-	interceptors := make(InterceptorCallMethods, len(j.globalInterceptors))
-	copy(interceptors, j.globalInterceptors)
-	j.mu.RUnlock()
-
 	var code int
 	var err error
-	for _, interceptor := range interceptors {
+	for _, interceptor := range cfg.globalInterceptors {
 		ctx, code, err = interceptor(ctx, methodName, data, id)
 		if err != nil {
 			return ctx, code, err

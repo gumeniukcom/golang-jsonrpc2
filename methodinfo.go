@@ -130,11 +130,10 @@ func WithExtra(key string, value any) MethodOption {
 // by name. The returned values are deep-copied at the slice/map level so the
 // caller may read and reorder them freely without affecting the registry.
 func (j *JSONRPC) Methods() []MethodInfo {
-	j.mu.RLock()
-	defer j.mu.RUnlock()
+	cfg := j.cfg.Load()
 
-	out := make([]MethodInfo, 0, len(j.methodInfo))
-	for _, info := range j.methodInfo {
+	out := make([]MethodInfo, 0, len(cfg.methodInfo))
+	for _, info := range cfg.methodInfo {
 		out = append(out, info.clone())
 	}
 	sort.Slice(out, func(a, b int) bool { return out[a].Name < out[b].Name })

@@ -5,6 +5,12 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  schedule:
+    # weekly: new vulnerabilities appear without code changes
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -40,3 +46,17 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.10.1
+
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: govulncheck
+        # pinned for reproducibility; bump deliberately
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...

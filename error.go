@@ -17,16 +17,16 @@ type ErrorMessages map[int]string
 // Codes in the range -32768..-32000 are reserved by the JSON-RPC spec.
 // See http://xmlrpc-epi.sourceforge.net/specs/rfc.fault_codes.php
 func (j *JSONRPC) RegisterError(code int, msg string) error {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if _, ok := j.errors[code]; ok {
-		return fmt.Errorf("error with code %d already exists", code)
-	}
-	if code >= -32768 && code <= -32000 {
-		return fmt.Errorf("error with code %d: range -32768..-32000 reserved", code)
-	}
-	j.errors[code] = msg
-	return nil
+	return j.updateConfig(func(c *config) error {
+		if _, ok := c.errors[code]; ok {
+			return fmt.Errorf("error with code %d already exists", code)
+		}
+		if code >= -32768 && code <= -32000 {
+			return fmt.Errorf("error with code %d: range -32768..-32000 reserved", code)
+		}
+		c.errors[code] = msg
+		return nil
+	})
 }
 
 // Error builds a JSON-RPC error response for the given error code and request ID.
@@ -43,6 +43,18 @@ func (j *JSONRPC) Error(
 	errorCode int,
 	id any,
 ) *structs.Response {
+	return j.errorResponse(ctx, j.cfg.Load(), err, errorCode, id)
+}
+
+// errorResponse is the hot-path variant of Error operating on an already
+// loaded config snapshot.
+func (j *JSONRPC) errorResponse(
+	ctx context.Context,
+	cfg *config,
+	err error,
+	errorCode int,
+	id any,
+) *structs.Response {
 	var data any
 	var rpcErr *RPCError
 	if errors.As(err, &rpcErr) && rpcErr != nil {
@@ -50,11 +62,9 @@ func (j *JSONRPC) Error(
 		data = rpcErr.Data
 	}
 
-	j.mu.RLock()
-	msg, ok := j.errors[errorCode]
-	internalMsg := j.errors[InternalErrorCode]
-	logger := j.logger
-	j.mu.RUnlock()
+	msg, ok := cfg.errors[errorCode]
+	internalMsg := cfg.errors[InternalErrorCode]
+	logger := cfg.logger
 
 	code := errorCode
 	if !ok {
@@ -111,4 +121,8 @@ func errorInvalidRequest() json.RawMessage {
 
 func errorBatchTooLarge() json.RawMessage {
 	return []byte(`{"jsonrpc":"2.0","error":{"code":-32600,"message":"batch_too_large"},"id":null}`)
+}
+
+func errorRequestTooLarge() json.RawMessage {
+	return []byte(`{"jsonrpc":"2.0","error":{"code":-32600,"message":"request_too_large"},"id":null}`)
 }

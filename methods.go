@@ -23,12 +23,12 @@ func (j *JSONRPC) RegisterMethod(name string, method RPCMethod) error {
 // rejecting a duplicate name. Both maps are kept in lockstep so Methods()
 // always mirrors the dispatch registry.
 func (j *JSONRPC) registerMethod(name string, method RPCMethod, info MethodInfo) error {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if _, ok := j.methods[name]; ok {
-		return fmt.Errorf("method %q already exists", name)
-	}
-	j.methods[name] = method
-	j.methodInfo[name] = info
-	return nil
+	return j.updateConfig(func(c *config) error {
+		if _, ok := c.methods[name]; ok {
+			return fmt.Errorf("method %q already exists", name)
+		}
+		c.methods[name] = method
+		c.methodInfo[name] = info
+		return nil
+	})
 }
