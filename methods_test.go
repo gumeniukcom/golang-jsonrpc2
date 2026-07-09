@@ -46,7 +46,7 @@ func TestJSONRPC_CallEmpty(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	resp := j.call(ctx, methodName, nil, callID)
+	resp := j.call(ctx, j.cfg.Load(), methodName, nil, callID)
 
 	if resp.ID != callID {
 		t.Errorf("should get ID=%v, but got %v", callID, resp.ID)
@@ -92,7 +92,7 @@ func TestJSONRPC_CallSum(t *testing.T) {
 
 	ctx := context.Background()
 	sendData := `{"a":3, "bb":5}`
-	resp := j.call(ctx, methodName, []byte(sendData), callID)
+	resp := j.call(ctx, j.cfg.Load(), methodName, []byte(sendData), callID)
 
 	if resp.ID != callID {
 		t.Errorf("should get ID=%v, but got %v", callID, resp.ID)

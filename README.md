@@ -175,21 +175,47 @@ Log levels: internal errors log at `Error`, timeouts at `Warn`, client-caused
 and registered application errors at `Debug` — a flood of bad requests cannot
 spam the log at `Error` level.
 
-## Batch limits
+## Batch and size limits
 
-Batches execute on a worker pool; unbounded by default. On an
-internet-exposed endpoint, bound them:
+Batches execute on a worker pool. Since v2.3.0 the defaults are DoS-safe:
+batches are capped at `DefaultMaxBatchSize` (100) requests and run on at most
+4×GOMAXPROCS workers. Tune or disable:
 
 ```go
-serv.SetMaxBatchSize(20)     // larger batches rejected with "batch_too_large" BEFORE unmarshaling
-serv.SetBatchConcurrency(4)  // worker pool of 4; responses keep request order
+serv.SetMaxBatchSize(20)     // larger batches rejected with "batch_too_large" BEFORE unmarshaling; 0 disables
+serv.SetBatchConcurrency(4)  // worker pool of 4; responses keep request order; 0 = goroutine per entry
+serv.SetMaxMessageSize(1 << 20) // reject messages over 1 MiB before parsing; 0 (default) disables
 ```
 
-`SetMaxBatchSize` bounds parsing work (the element count is checked on the
-raw bytes), but not raw body size — cap that at the transport layer. The
-concurrency bound counts started requests: a handler that ignores context
-cancellation after its timeout keeps running in the background and no longer
-occupies a worker slot.
+`SetMaxBatchSize` and `SetMaxMessageSize` bound parsing work (both are checked
+on the raw bytes before unmarshaling), but not raw body size — cap that at the
+transport layer too (`http.MaxBytesReader`, see `example/`).
+
+## Timeouts
+
+Handlers run inline on the caller's goroutine with a per-request
+`context.WithTimeout` (`SetDefaultTimeOut`, 30s default). If the deadline has
+expired by the time the handler returns, the client gets a
+`request_time_limit` error — so a handler that ignores `ctx.Done()` delays the
+(still time-limit) response until it returns. Handlers should respect context
+cancellation.
+
+If you need the time-limit response delivered exactly at the deadline even
+when a handler hangs, opt in to the pre-v2.3.0 behavior:
+
+```go
+serv.SetEnforcedTimeout(true) // goroutine per call; responds at the deadline,
+                              // the stuck handler keeps running in the background
+```
+
+In enforced mode the batch concurrency bound counts started requests: a
+handler that ignores cancellation no longer occupies a worker slot, so stuck
+handlers can accumulate without bound.
+
+Cancellation of the caller's context (client disconnect, shutdown) is not a
+time limit: a handler that completes keeps its response. Only enforced mode
+aborting a still-running call reports `request_time_limit` on cancellation,
+logging the real cause server-side.
 
 ## Migration from v1
 
@@ -242,6 +268,26 @@ occupies a worker slot.
   now keep request order).
 - A response entry with unmarshalable `data` no longer destroys the whole
   batch: only that entry degrades to `internal_error`, keeping its id.
+
+## v2.3.0 changes
+
+- **Performance:** the dispatcher no longer spawns a goroutine + channel +
+  `select` per request — handlers run inline with a plain
+  `context.WithTimeout`. Configuration moved from an `RWMutex` to an
+  atomically-swapped immutable snapshot (copy-on-write in setters), removing
+  all locking and the interceptor-slice copy from the hot path.
+- **Behavior change (timeouts):** by default the time-limit response is now
+  produced when the handler returns after the deadline, instead of being
+  forced at the deadline from a watchdog goroutine. `SetEnforcedTimeout(true)`
+  restores the old semantics.
+- **Behavior change (safe defaults):** `New()` now caps batches at
+  `DefaultMaxBatchSize` (100) and batch concurrency at 4×GOMAXPROCS.
+  `SetMaxBatchSize(0)` / `SetBatchConcurrency(0)` restore the old unlimited
+  behavior.
+- Added `SetMaxMessageSize` — reject oversized raw messages (with
+  `request_too_large`) before any parsing; disabled by default.
+- `example/` hardened: `http.MaxBytesReader` + `http.Server` timeouts.
+- CI: weekly `govulncheck` job; `toolchain go1.25.12` pin in go.mod.
 
 ## v2.2.0 changes
 
