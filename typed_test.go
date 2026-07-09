@@ -32,7 +32,7 @@ func TestTyped_Success(t *testing.T) {
 		Version: Version,
 		Method:  "sum",
 		Params:  []byte(`{"a":3,"b":5}`),
-		ID:      1,
+		ID:      structs.ID("1"),
 	})
 	if resp.Error != nil {
 		t.Fatalf("expected no error, got %+v", resp.Error)
@@ -56,7 +56,7 @@ func TestTyped_NilParams(t *testing.T) {
 	resp := j.HandleRPC(context.Background(), &structs.Request{
 		Version: Version,
 		Method:  "zero",
-		ID:      1,
+		ID:      structs.ID("1"),
 	})
 	if resp.Error != nil {
 		t.Fatalf("absent params should yield zero value, got error %+v", resp.Error)
@@ -81,7 +81,7 @@ func TestTyped_InvalidParams(t *testing.T) {
 		Version: Version,
 		Method:  "sum",
 		Params:  []byte(`{"a":"not-a-number"}`),
-		ID:      1,
+		ID:      structs.ID("1"),
 	})
 	if resp.Error == nil {
 		t.Fatal("expected error response")
@@ -112,7 +112,7 @@ func TestTyped_RPCErrorCodeAndData(t *testing.T) {
 		Version: Version,
 		Method:  "crop.add",
 		Params:  []byte(`{"a":1,"b":2}`),
-		ID:      1,
+		ID:      structs.ID("1"),
 	})
 	if resp.Error == nil {
 		t.Fatal("expected error response")
@@ -147,7 +147,7 @@ func TestTyped_PlainErrorMapsToInternal(t *testing.T) {
 		Version: Version,
 		Method:  "boom",
 		Params:  []byte(`{}`),
-		ID:      1,
+		ID:      structs.ID("1"),
 	})
 	if resp.Error == nil {
 		t.Fatal("expected error response")

@@ -8,7 +8,7 @@ type Response struct {
 	Version string           `json:"jsonrpc"`
 	Result  *json.RawMessage `json:"result,omitempty"`
 	Error   *Error           `json:"error,omitempty"`
-	ID      any              `json:"id"`
+	ID      ID               `json:"id"`
 }
 
 // Error represents a JSON-RPC 2.0 error object.

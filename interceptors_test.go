@@ -44,7 +44,7 @@ func TestInterceptor_ContextChaining(t *testing.T) {
 		Version: Version,
 		Method:  "test",
 		Params:  []byte("{}"),
-		ID:      1,
+		ID:      structs.ID("1"),
 	})
 
 	if resp.Error != nil {
@@ -72,7 +72,7 @@ func TestInterceptor_Abort(t *testing.T) {
 		Version: Version,
 		Method:  "test",
 		Params:  []byte("{}"),
-		ID:      1,
+		ID:      structs.ID("1"),
 	})
 
 	if resp.Error == nil {
@@ -107,7 +107,7 @@ func TestInterceptor_MultipleAbortOnFirst(t *testing.T) {
 		Version: Version,
 		Method:  "test",
 		Params:  []byte("{}"),
-		ID:      1,
+		ID:      structs.ID("1"),
 	})
 
 	if resp.Error == nil {

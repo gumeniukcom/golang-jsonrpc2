@@ -60,3 +60,33 @@ jobs:
       - name: govulncheck
         # pinned for reproducibility; bump deliberately
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+  bench:
+    # Informational perf-regression check: compares PR benchmarks against the
+    # base branch with benchstat. Shared runners are noisy — treat deltas
+    # under ~10% as noise; the job never blocks a merge.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Bench PR
+        run: go test -run xxx -bench=. -benchmem -count=6 . | tee /tmp/new.txt
+
+      - name: Bench base
+        run: |
+          git worktree add /tmp/base origin/${{ github.base_ref }}
+          cd /tmp/base
+          go test -run xxx -bench=. -benchmem -count=6 . | tee /tmp/old.txt || true
+
+      - name: benchstat
+        # pinned for reproducibility; bump deliberately
+        run: go run golang.org/x/perf/cmd/benchstat@v0.0.0-20260709024250-82a0b07e230d /tmp/old.txt /tmp/new.txt

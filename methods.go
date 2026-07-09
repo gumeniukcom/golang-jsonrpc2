@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // RPCMethod defines the function signature for JSON-RPC methods.
@@ -24,6 +25,9 @@ func (j *JSONRPC) RegisterMethod(name string, method RPCMethod) error {
 // always mirrors the dispatch registry.
 func (j *JSONRPC) registerMethod(name string, method RPCMethod, info MethodInfo) error {
 	return j.updateConfig(func(c *config) error {
+		if strings.HasPrefix(name, "rpc.") {
+			return fmt.Errorf("method name %q: the \"rpc.\" prefix is reserved by the JSON-RPC 2.0 spec", name)
+		}
 		if _, ok := c.methods[name]; ok {
 			return fmt.Errorf("method %q already exists", name)
 		}
