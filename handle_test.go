@@ -19,11 +19,11 @@ func TestJSONRPC_HandleRPCJSONRawMessage(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"empty input", "", string(errorInvalidRequest())},
-		{"open bracket only", "[", string(errorInvalidRequest())},
-		{"mismatched brackets", "[}", string(errorInvalidRequest())},
-		{"invalid batch", "[foo}", string(errorInvalidRequest())},
-		{"invalid object", "{foo}", string(errorInvalidRequest())},
+		{"empty input", "", string(errorParse())},
+		{"open bracket only", "[", string(errorParse())},
+		{"mismatched brackets", "[}", string(errorParse())},
+		{"invalid batch", "[foo}", string(errorParse())},
+		{"invalid object", "{foo}", string(errorParse())},
 		{
 			"method not found",
 			`{"jsonrpc":"2.0", "method":"foo", "params":{}, "id":2}`,
@@ -93,7 +93,7 @@ func TestJSONRPC_HandleRPC(t *testing.T) {
 		Version: Version,
 		Method:  "sum",
 		Params:  []byte(sendData),
-		ID:      23,
+		ID:      structs.ID("23"),
 	})
 	if resp.Error != nil {
 		t.Errorf("expected no error, but got code=%v", resp.Error.Code)
@@ -171,8 +171,8 @@ func TestJSONRPC_HandleBatchRPC(t *testing.T) {
 	ctx := context.Background()
 
 	requests := structs.Requests{
-		structs.Request{Version: Version, Method: "sum2", Params: []byte(`{"a":3, "bb":8}`), ID: 24},
-		structs.Request{Version: Version, Method: "sum", Params: []byte(`{"a":3, "bb":5}`), ID: 23},
+		structs.Request{Version: Version, Method: "sum2", Params: []byte(`{"a":3, "bb":8}`), ID: structs.ID("24")},
+		structs.Request{Version: Version, Method: "sum", Params: []byte(`{"a":3, "bb":5}`), ID: structs.ID("23")},
 	}
 
 	resp := j.HandleBatchRPC(ctx, requests)
@@ -256,8 +256,8 @@ func TestJSONRPC_HandleBatchRPCWithTimeOut(t *testing.T) {
 	ctx := context.Background()
 
 	requests := structs.Requests{
-		structs.Request{Version: Version, Method: "sum2", Params: []byte(`{"a":3, "bb":8}`), ID: float64(24)},
-		structs.Request{Version: Version, Method: "sum", Params: []byte(`{"a":3, "bb":5}`), ID: float64(23)},
+		structs.Request{Version: Version, Method: "sum2", Params: []byte(`{"a":3, "bb":8}`), ID: structs.ID("24")},
+		structs.Request{Version: Version, Method: "sum", Params: []byte(`{"a":3, "bb":5}`), ID: structs.ID("23")},
 	}
 
 	resp := j.HandleBatchRPC(ctx, requests)
@@ -267,7 +267,7 @@ func TestJSONRPC_HandleBatchRPCWithTimeOut(t *testing.T) {
 	}
 
 	for idx := range resp {
-		if resp[idx].ID == float64(24) && resp[idx].Error == nil {
+		if string(resp[idx].ID) == "24" && resp[idx].Error == nil {
 			t.Errorf("expected timeout error for resp id 24")
 		}
 	}

@@ -110,19 +110,34 @@ func newError(errMsg string, errorCode int, data any, id any) *structs.Response 
 	})
 }
 
-func errorInternal() json.RawMessage {
-	return []byte(`{"jsonrpc":"2.0","error":{"code":-32603,"message":"internal_error"},"id":null}`)
-}
+// Pre-serialized error responses for reject paths that must stay cheap.
+// The returned slices are shared package state: callers (and transports)
+// must treat them as read-only.
+var (
+	respInternal        = json.RawMessage(`{"jsonrpc":"2.0","error":{"code":-32603,"message":"internal_error"},"id":null}`)
+	respInvalidRequest  = json.RawMessage(`{"jsonrpc":"2.0","error":{"code":-32600,"message":"invalid_request_not_conforming_to_spec"},"id":null}`)
+	respBatchTooLarge   = json.RawMessage(`{"jsonrpc":"2.0","error":{"code":-32600,"message":"batch_too_large"},"id":null}`)
+	respRequestTooLarge = json.RawMessage(`{"jsonrpc":"2.0","error":{"code":-32600,"message":"request_too_large"},"id":null}`)
+	respParseError      = json.RawMessage(`{"jsonrpc":"2.0","error":{"code":-32700,"message":"parse_error_not_well_formed"},"id":null}`)
+)
 
-func errorInvalidRequest() json.RawMessage {
-	return []byte(
-		`{"jsonrpc":"2.0","error":{"code":-32600,"message":"invalid_request_not_conforming_to_spec"},"id":null}`)
-}
+func errorInternal() json.RawMessage { return respInternal }
 
-func errorBatchTooLarge() json.RawMessage {
-	return []byte(`{"jsonrpc":"2.0","error":{"code":-32600,"message":"batch_too_large"},"id":null}`)
-}
+func errorInvalidRequest() json.RawMessage { return respInvalidRequest }
 
-func errorRequestTooLarge() json.RawMessage {
-	return []byte(`{"jsonrpc":"2.0","error":{"code":-32600,"message":"request_too_large"},"id":null}`)
+func errorBatchTooLarge() json.RawMessage { return respBatchTooLarge }
+
+func errorRequestTooLarge() json.RawMessage { return respRequestTooLarge }
+
+func errorParse() json.RawMessage { return respParseError }
+
+// errorForMalformed classifies undecodable input per the JSON-RPC 2.0 spec:
+// syntactically broken JSON is a ParseError (-32700), while valid JSON that
+// is not a request object is an InvalidRequest (-32600). json.Valid runs
+// only on this error path.
+func errorForMalformed(data []byte) json.RawMessage {
+	if json.Valid(data) {
+		return errorInvalidRequest()
+	}
+	return errorParse()
 }

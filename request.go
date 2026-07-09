@@ -18,7 +18,7 @@ func NewRequest(methodName string, params ParamsDataMarshaler) (*structs.Request
 		Version: Version,
 		Method:  methodName,
 		Params:  paramsBytes,
-		ID:      requestID,
+		ID:      structs.ID(`"` + requestID + `"`),
 	}
 
 	err = validateRequest(req)

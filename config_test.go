@@ -126,7 +126,7 @@ func TestInlineTimeoutHandlerRespectsContext(t *testing.T) {
 	registerSleeper(t, j, "slow", 5*time.Second, true)
 
 	start := time.Now()
-	resp := j.HandleRPC(context.Background(), &structs.Request{Version: Version, Method: "slow", ID: float64(1)})
+	resp := j.HandleRPC(context.Background(), &structs.Request{Version: Version, Method: "slow", ID: structs.ID("1")})
 	elapsed := time.Since(start)
 
 	if resp.Error == nil || resp.Error.Code != RequestTimeLimit {
@@ -144,7 +144,7 @@ func TestInlineTimeoutHandlerIgnoresContext(t *testing.T) {
 	j.SetDefaultTimeOut(20 * time.Millisecond)
 	registerSleeper(t, j, "stubborn", 200*time.Millisecond, false)
 
-	resp := j.HandleRPC(context.Background(), &structs.Request{Version: Version, Method: "stubborn", ID: float64(1)})
+	resp := j.HandleRPC(context.Background(), &structs.Request{Version: Version, Method: "stubborn", ID: structs.ID("1")})
 	if resp.Error == nil || resp.Error.Code != RequestTimeLimit {
 		t.Fatalf("expected time-limit error after late return, got: %+v", resp)
 	}
@@ -159,7 +159,7 @@ func TestEnforcedTimeoutRespondsAtDeadline(t *testing.T) {
 	registerSleeper(t, j, "stubborn", 3*time.Second, false)
 
 	start := time.Now()
-	resp := j.HandleRPC(context.Background(), &structs.Request{Version: Version, Method: "stubborn", ID: float64(1)})
+	resp := j.HandleRPC(context.Background(), &structs.Request{Version: Version, Method: "stubborn", ID: structs.ID("1")})
 	elapsed := time.Since(start)
 
 	if resp.Error == nil || resp.Error.Code != RequestTimeLimit {
@@ -185,7 +185,7 @@ func TestParentCancelDoesNotBecomeTimeLimit(t *testing.T) {
 		cancel() // client goes away while the handler is running
 	}()
 
-	resp := j.HandleRPC(ctx, &structs.Request{Version: Version, Method: "work", ID: float64(1)})
+	resp := j.HandleRPC(ctx, &structs.Request{Version: Version, Method: "work", ID: structs.ID("1")})
 	if resp.Error != nil {
 		t.Fatalf("completed handler must keep its response on parent cancel, got error: %+v", resp.Error)
 	}

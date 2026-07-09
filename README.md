@@ -286,7 +286,33 @@ logging the real cause server-side.
   behavior.
 - Added `SetMaxMessageSize` — reject oversized raw messages (with
   `request_too_large`) before any parsing; disabled by default.
+- **Spec compliance (notifications):** a request without an `id` member is a
+  notification — it executes but produces NO response (`HandleRPC` returns
+  nil, `HandleRPCJSONRawMessage` returns nil); notification entries are
+  filtered from batch responses, and an all-notification batch returns
+  nothing. A present `"id":null` still gets a response. Transports must
+  handle an empty result (HTTP: 204 No Content).
+- **Spec compliance (parse errors):** malformed JSON now yields
+  `-32700 parse_error` instead of `-32600`; valid JSON that is not a request
+  object stays `-32600`. Whitespace around the message is accepted.
+- **Breaking (structs):** `structs.Request.ID` / `structs.Response.ID`
+  changed from `any` to `structs.ID` (raw JSON bytes; nil = absent id).
+  Ids are now echoed byte-exact — no float64 round-trip, large integer ids
+  keep precision — and marshal without reflection. `NewResponse` still
+  accepts plain Go values. Interceptors now receive `structs.ID` in their
+  `id any` parameter.
+- id values are validated (string, number, or null only); registering method
+  names with the reserved `rpc.` prefix is rejected.
+- Static pre-serialized responses for reject paths (parse error, invalid
+  request, too-large). The `json.RawMessage` returned by
+  `HandleRPCJSONRawMessage` must be treated as **read-only**: on these paths
+  it is shared package state.
+- Batch entries are decoded individually: an undecodable entry gets its own
+  `-32600` response with `id:null` and no longer destroys the responses of
+  its valid siblings; `[1,2,3]` yields three error entries per the spec.
 - `example/` hardened: `http.MaxBytesReader` + `http.Server` timeouts.
+- Benchmarks live in the repo (`make bench`); CI runs an informational
+  benchstat comparison against the base branch on every PR.
 - CI: weekly `govulncheck` job; `toolchain go1.25.12` pin in go.mod.
 
 ## v2.2.0 changes

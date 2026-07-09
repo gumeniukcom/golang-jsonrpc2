@@ -72,12 +72,12 @@ func TestAll(t *testing.T) {
 		{
 			name:     "empty body",
 			request:  "",
-			response: `{"jsonrpc":"2.0","error":{"code":-32600,"message":"invalid_request_not_conforming_to_spec"},"id":null}`,
+			response: `{"jsonrpc":"2.0","error":{"code":-32700,"message":"parse_error_not_well_formed"},"id":null}`,
 		},
 		{
 			name:     "malformed JSON",
 			request:  `{"jsonrpc":"2.0", "id"":1}`,
-			response: `{"jsonrpc":"2.0","error":{"code":-32600,"message":"invalid_request_not_conforming_to_spec"},"id":null}`,
+			response: `{"jsonrpc":"2.0","error":{"code":-32700,"message":"parse_error_not_well_formed"},"id":null}`,
 		},
 	}
 

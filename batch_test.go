@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -119,7 +120,7 @@ func TestJSONRPC_BatchConcurrency(t *testing.T) {
 
 	requests := make(structs.Requests, 10)
 	for i := range requests {
-		requests[i] = structs.Request{Version: Version, Method: "slow", ID: i}
+		requests[i] = structs.Request{Version: Version, Method: "slow", ID: structs.ID(strconv.Itoa(i))}
 	}
 
 	resp := j.HandleBatchRPC(context.Background(), requests)
@@ -150,12 +151,12 @@ func TestJSONRPC_BatchResponsesKeepRequestOrder(t *testing.T) {
 
 	requests := make(structs.Requests, 20)
 	for i := range requests {
-		requests[i] = structs.Request{Version: Version, Method: "echo", ID: i}
+		requests[i] = structs.Request{Version: Version, Method: "echo", ID: structs.ID(strconv.Itoa(i))}
 	}
 
 	resp := j.HandleBatchRPC(context.Background(), requests)
 	for i := range resp {
-		if resp[i].ID != i {
+		if string(resp[i].ID) != strconv.Itoa(i) {
 			t.Fatalf("response %d has id %v, responses must keep request order", i, resp[i].ID)
 		}
 	}
