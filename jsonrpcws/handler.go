@@ -77,7 +77,10 @@ func WithMaxMessageSize(n int64) Option {
 // connection may have; further frames wait for a slot. Note the slot unit is
 // a message, and one message may be a batch of up to the dispatcher's
 // SetMaxBatchSize requests — lower this bound for batch-heavy workloads.
-// Non-positive values keep the default.
+// With the dispatcher's SetEnforcedTimeout(true) the bound counts started
+// requests: a handler that ignores cancellation keeps running after its
+// slot is released, so keep the default inline timeout mode for connections
+// exposed to untrusted peers. Non-positive values keep the default.
 func WithMaxConcurrentCalls(n int) Option {
 	return func(h *handler) {
 		if n > 0 {
