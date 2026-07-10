@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 follows [Semantic Versioning](https://semver.org) for the `/v2` module.
 
-## [Unreleased]
+## [2.6.0]
 
 ### Changed — behavior of the day-old v2.5.0 discovery (deliberate, act now)
 
