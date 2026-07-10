@@ -29,7 +29,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/gumeniukcom/golang-jsonrpc2
+        - github.com/gumeniukcom/golang-jsonrpc2/v2
 
 issues:
   max-issues-per-linter: 50

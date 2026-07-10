@@ -13,17 +13,24 @@ go get github.com/gumeniukcom/golang-jsonrpc2/v2
 ## HTTP example
 
 ### Server
+
+The `jsonrpchttp` subpackage turns the dispatcher into an `http.Handler`: it
+bounds the request body (1 MiB by default, `WithMaxBodySize` to tune),
+answers notifications with `204 No Content`, checks `Content-Type`, and maps
+transport-level failures to HTTP codes (405/415/413/400) while JSON-RPC
+errors stay HTTP 200 with an error body.
+
 ```go
 package main
 
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
+	"time"
 
 	jrpc "github.com/gumeniukcom/golang-jsonrpc2/v2"
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpchttp"
 )
 
 func main() {
@@ -33,21 +40,14 @@ func main() {
 		panic(err)
 	}
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			panic(err)
-		}
-		defer r.Body.Close()
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if _, err = w.Write(serv.HandleRPCJSONRawMessage(r.Context(), body)); err != nil {
-			panic(err)
-		}
-	})
-
-	if err := http.ListenAndServe(":8088", nil); err != nil {
+	srv := &http.Server{
+		Addr:              ":8088",
+		Handler:           jsonrpchttp.Handler(serv),
+		ReadHeaderTimeout: 5 * time.Second, // slow-client protection lives here
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      60 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }
@@ -61,26 +61,21 @@ type outcome struct {
 }
 
 func sum(_ context.Context, data json.RawMessage) (json.RawMessage, int, error) {
-	if data == nil {
-		return nil, jrpc.InvalidRequestErrorCode, fmt.Errorf("empty request")
-	}
 	inc := &income{}
-	err := json.Unmarshal(data, inc)
-	if err != nil {
-		return nil, jrpc.InvalidRequestErrorCode, err
+	if err := json.Unmarshal(data, inc); err != nil {
+		return nil, jrpc.InvalidParamsErrorCode, err
 	}
-
-	C := outcome{
-		Sum: inc.A + inc.B,
-	}
-
-	mdata, err := json.Marshal(C)
+	mdata, err := json.Marshal(outcome{Sum: inc.A + inc.B})
 	if err != nil {
 		return nil, jrpc.InternalErrorCode, err
 	}
 	return mdata, jrpc.OK, nil
 }
 ```
+
+Prefer a custom transport? `HandleRPCJSONRawMessage(ctx, body)` is the whole
+contract — feed it raw bytes, write back what it returns (empty result means
+"no response": a notification).
 
 ### Request
 
@@ -217,6 +212,52 @@ time limit: a handler that completes keeps its response. Only enforced mode
 aborting a still-running call reports `request_time_limit` on cancellation,
 logging the real cause server-side.
 
+## Middleware
+
+Global middleware wraps every method (including ones registered later) with
+post-call capability — metrics, tracing, auth, result rewriting. Composition
+happens copy-on-write at registration, so middleware adds zero per-request
+overhead beyond the wrappers themselves. First registered is outermost:
+
+```go
+serv.Use(func(method string, next jrpc.RPCMethod) jrpc.RPCMethod {
+	return func(ctx context.Context, data json.RawMessage) (json.RawMessage, int, error) {
+		start := time.Now()
+		res, code, err := next(ctx, data)
+		log.Printf("%s took %v", method, time.Since(start))
+		return res, code, err
+	}
+})
+```
+
+Per-method timeouts override the server default:
+
+```go
+jrpc.RegisterTyped(serv, "report.build", buildReport,
+	jrpc.WithTimeout(5*time.Minute)) // this method may run longer than the default
+```
+
+## OpenRPC document
+
+The `openrpc` subpackage renders an [OpenRPC 1.3.2](https://spec.open-rpc.org)
+service description straight from the dispatch registry — typed param/result
+schemas, tags, errors, examples:
+
+```go
+import "github.com/gumeniukcom/golang-jsonrpc2/v2/openrpc"
+
+doc, _ := openrpc.Document(openrpc.Info{Title: "My API", Version: "1.0.0"}, serv.Methods())
+mux.HandleFunc("/openrpc.json", func(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(doc)
+})
+```
+
+The document is a complete map of your API — method names, type shapes,
+`Examples` and `Extra` values are published verbatim. Put the endpoint
+behind auth (or keep it internal), don't put secrets in examples, and
+filter internal-only methods out of `Methods()` before generating.
+
 ## Migration from v1
 
 ### Module path
@@ -252,74 +293,6 @@ logging the real cause server-side.
 - Added `sync.RWMutex` for concurrent safety
 - Replaced deprecated `satori/go.uuid` with `google/uuid`
 
-## v2.1.0 changes
+## Changelog
 
-- **Security / behavior change:** error responses no longer echo `err.Error()`
-  into `error.data`. Internal detail is logged server-side (`SetLogger`,
-  defaults to `slog.Default()`; internal errors at `Error`, timeouts at
-  `Warn`, client-caused errors at `Debug`); client-visible detail is opt-in
-  via `RPCError.WithData`.
-- Added `RPCError` (authoritative code + client-safe data + wrapped
-  server-side error). `WithData` returns a copy — package-level sentinels are
-  safe to share.
-- Added generic `Typed` / `RegisterTyped` handler adapters.
-- Added `SetMaxBatchSize` (checked before unmarshaling, rejects with
-  `batch_too_large`) and `SetBatchConcurrency` (worker pool; batch responses
-  now keep request order).
-- A response entry with unmarshalable `data` no longer destroys the whole
-  batch: only that entry degrades to `internal_error`, keeping its id.
-
-## v2.3.0 changes
-
-- **Performance:** the dispatcher no longer spawns a goroutine + channel +
-  `select` per request — handlers run inline with a plain
-  `context.WithTimeout`. Configuration moved from an `RWMutex` to an
-  atomically-swapped immutable snapshot (copy-on-write in setters), removing
-  all locking and the interceptor-slice copy from the hot path.
-- **Behavior change (timeouts):** by default the time-limit response is now
-  produced when the handler returns after the deadline, instead of being
-  forced at the deadline from a watchdog goroutine. `SetEnforcedTimeout(true)`
-  restores the old semantics.
-- **Behavior change (safe defaults):** `New()` now caps batches at
-  `DefaultMaxBatchSize` (100) and batch concurrency at 4×GOMAXPROCS.
-  `SetMaxBatchSize(0)` / `SetBatchConcurrency(0)` restore the old unlimited
-  behavior.
-- Added `SetMaxMessageSize` — reject oversized raw messages (with
-  `request_too_large`) before any parsing; disabled by default.
-- **Spec compliance (notifications):** a request without an `id` member is a
-  notification — it executes but produces NO response (`HandleRPC` returns
-  nil, `HandleRPCJSONRawMessage` returns nil); notification entries are
-  filtered from batch responses, and an all-notification batch returns
-  nothing. A present `"id":null` still gets a response. Transports must
-  handle an empty result (HTTP: 204 No Content).
-- **Spec compliance (parse errors):** malformed JSON now yields
-  `-32700 parse_error` instead of `-32600`; valid JSON that is not a request
-  object stays `-32600`. Whitespace around the message is accepted.
-- **Breaking (structs):** `structs.Request.ID` / `structs.Response.ID`
-  changed from `any` to `structs.ID` (raw JSON bytes; nil = absent id).
-  Ids are now echoed byte-exact — no float64 round-trip, large integer ids
-  keep precision — and marshal without reflection. `NewResponse` still
-  accepts plain Go values. Interceptors now receive `structs.ID` in their
-  `id any` parameter.
-- id values are validated (string, number, or null only); registering method
-  names with the reserved `rpc.` prefix is rejected.
-- Static pre-serialized responses for reject paths (parse error, invalid
-  request, too-large). The `json.RawMessage` returned by
-  `HandleRPCJSONRawMessage` must be treated as **read-only**: on these paths
-  it is shared package state.
-- Batch entries are decoded individually: an undecodable entry gets its own
-  `-32600` response with `id:null` and no longer destroys the responses of
-  its valid siblings; `[1,2,3]` yields three error entries per the spec.
-- `example/` hardened: `http.MaxBytesReader` + `http.Server` timeouts.
-- Benchmarks live in the repo (`make bench`); CI runs an informational
-  benchstat comparison against the base branch on every PR.
-- CI: weekly `govulncheck` job; `toolchain go1.25.12` pin in go.mod.
-
-## v2.2.0 changes
-
-- Added an introspectable method registry. `RegisterTyped` now records the
-  reflect types of `P`/`R` and accepts variadic `MethodOption`s (`WithSummary`,
-  `WithDescription`, `WithTags`, `WithDeprecated`, `WithErrors`, `WithExample`,
-  `WithExtra`); `Methods()` returns a name-sorted, defensively-copied snapshot
-  of `MethodInfo`. Backward compatible — existing `RegisterTyped(j, name, fn)`
-  calls and `RegisterMethod` (recorded name-only) are unchanged.
+See [CHANGELOG.md](CHANGELOG.md).

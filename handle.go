@@ -299,8 +299,14 @@ func (j *JSONRPC) handleRPC(ctx context.Context, cfg *config, data *structs.Requ
 }
 
 // dispatch runs one validated request under the configured timeout regime.
+// A per-method WithTimeout overrides the server default.
 func (j *JSONRPC) dispatch(ctx context.Context, cfg *config, data *structs.Request) *structs.Response {
-	ctxt, cancel := context.WithTimeout(ctx, cfg.defaultTimeOut)
+	timeout := cfg.defaultTimeOut
+	if info, ok := cfg.methodInfo[data.Method]; ok && info.Timeout > 0 {
+		timeout = info.Timeout
+	}
+
+	ctxt, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	if cfg.enforcedTimeout {
