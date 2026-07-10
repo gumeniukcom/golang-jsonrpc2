@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiber"
+
 	jsonrpc "github.com/gumeniukcom/golang-jsonrpc2/v2"
 )
 
