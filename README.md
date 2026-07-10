@@ -1,29 +1,23 @@
-# golang-jsonrpc2/v2
+# golang-jsonrpc2
 
-Implementation for JSON-RPC 2.0 protocol in Go.
+[![Go Reference](https://pkg.go.dev/badge/github.com/gumeniukcom/golang-jsonrpc2/v2.svg)](https://pkg.go.dev/github.com/gumeniukcom/golang-jsonrpc2/v2)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gumeniukcom/golang-jsonrpc2/v2)](https://goreportcard.com/report/github.com/gumeniukcom/golang-jsonrpc2/v2)
+[![CI](https://github.com/gumeniukcom/golang-jsonrpc2/actions/workflows/ci.yml/badge.svg)](https://github.com/gumeniukcom/golang-jsonrpc2/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/gumeniukcom/golang-jsonrpc2)](https://github.com/gumeniukcom/golang-jsonrpc2/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Full specification: https://www.jsonrpc.org/specification
+Spec-conformant JSON-RPC 2.0 for Go: one dispatcher core serving five
+transports out of the box — HTTP, Fiber, WebSocket, and stdio with both LSP
+`Content-Length` and MCP newline framing — with typed handlers via
+generics, OpenRPC self-description, and DoS-aware defaults.
 
-## Install
-
-```bash
-go get github.com/gumeniukcom/golang-jsonrpc2/v2
-```
-
-## HTTP example
-
-The `jsonrpchttp` subpackage turns the dispatcher into an `http.Handler`: it
-bounds the request body (1 MiB by default, `WithMaxBodySize` to tune),
-answers notifications with `204 No Content`, checks `Content-Type`, and maps
-transport-level failures to HTTP codes (405/415/413/400) while JSON-RPC
-errors stay HTTP 200 with an error body.
+## Quick start
 
 ```go
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -31,152 +25,110 @@ import (
 	"github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpchttp"
 )
 
+type sumParams struct{ A, B int }
+type sumResult struct{ Sum int }
+
 func main() {
 	serv := jrpc.New()
-
-	if err := serv.RegisterMethod("sum", sum); err != nil {
-		panic(err)
-	}
+	_ = jrpc.RegisterTyped(serv, "sum", func(ctx context.Context, p sumParams) (sumResult, error) {
+		return sumResult{Sum: p.A + p.B}, nil
+	})
 
 	srv := &http.Server{
 		Addr:              ":8088",
 		Handler:           jsonrpchttp.Handler(serv),
-		ReadHeaderTimeout: 5 * time.Second, // slow-client protection lives here
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second, // see docs/production.md for the full checklist
 	}
-	if err := srv.ListenAndServe(); err != nil {
-		panic(err)
-	}
-}
-
-type income struct {
-	A int `json:"a"`
-	B int `json:"b"`
-}
-type outcome struct {
-	Sum int `json:"sum"`
-}
-
-func sum(_ context.Context, data json.RawMessage) (json.RawMessage, int, error) {
-	inc := &income{}
-	if err := json.Unmarshal(data, inc); err != nil {
-		return nil, jrpc.InvalidParamsErrorCode, err
-	}
-	mdata, err := json.Marshal(outcome{Sum: inc.A + inc.B})
-	if err != nil {
-		return nil, jrpc.InternalErrorCode, err
-	}
-	return mdata, jrpc.OK, nil
+	panic(srv.ListenAndServe())
 }
 ```
-
-Prefer a custom transport? `HandleRPCJSONRawMessage(ctx, body)` is the whole
-contract — feed it raw bytes, write back what it returns (empty result means
-"no response": a notification).
-
-### Request
 
 ```bash
-curl -d '{"jsonrpc":"2.0", "id":"qwe", "method":"sum", "params":{"a":5, "b":3}}' -H "Content-Type: application/json" -X POST http://localhost:8088/
+go get github.com/gumeniukcom/golang-jsonrpc2/v2
+curl -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"sum","params":{"a":5,"b":3}}' localhost:8088
+# {"jsonrpc":"2.0","result":{"Sum":8},"id":1}
 ```
 
-### Response
+An MCP server over stdio is the same dispatcher on a different wire —
+`jsonrpcstdio.Serve(ctx, serv, jsonrpcstdio.FramingNDJSON, os.Stdin, os.Stdout)`
+is the whole transport. Runnable example: [example/mcp-stdio](example/mcp-stdio/main.go),
+walkthrough: [docs/mcp-lsp.md](docs/mcp-lsp.md).
 
-```json
-{"jsonrpc":"2.0","result":{"sum":8},"id":"qwe"}
-```
+## Why this library
 
-## Fiber (v2 and v3)
+- **Fast where it counts.** A dispatched call costs ~1.1 µs — below a
+  hand-rolled `encoding/json` dispatcher — and a full end-to-end call runs
+  ~2× faster than the two widely-used alternatives with ~3.4× fewer
+  allocations, matching stdlib `net/rpc` on large-payload throughput.
+  Measured 2026-07-10; full tables, methodology, and caveats:
+  [docs/BENCHMARKS.md](docs/BENCHMARKS.md), reproduce with
+  `make bench-compare`.
+- **One core, five wires.** Register methods once; serve them over HTTP,
+  Fiber v2/v3, WebSocket, and stdio (LSP or MCP framing) simultaneously —
+  plus a one-call contract for custom transports.
+- **Typed handlers via generics.** `RegisterTyped` gives compile-time
+  param/result types with no reflection on the hot path, and the same
+  registry renders an [OpenRPC 1.3.2 document](docs/openrpc.md).
+- **Safe by default.** Batch cap (100) with a bounded worker pool,
+  per-request timeouts, panic recovery, byte-exact spec conformance
+  (notifications, batches, id echo, -32700/-32600 classification), and
+  error texts never leak to clients unless you opt in.
+- **Lean dependency graph.** Three direct deps in the core module; Fiber
+  adapters and the benchmark suite live in nested modules that never touch
+  your build.
 
-Adapters for the [Fiber](https://gofiber.io) framework live in separate nested
-modules, so Fiber and fasthttp never enter the core module's `go.mod`:
+## Transports
 
-```go
-// Fiber v2 — go get github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiber
-import "github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiber"
-app.Post("/rpc", jsonrpcfiber.Handler(rpc))
+| Wire | Package | Push | Notes |
+|---|---|---|---|
+| HTTP | [`jsonrpchttp`](https://pkg.go.dev/github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpchttp) | — | 204 for notifications, body cap, client included |
+| Fiber v2/v3 | [`jsonrpcfiber`](https://pkg.go.dev/github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiber), [`jsonrpcfiberv3`](https://pkg.go.dev/github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiberv3) | — | nested modules, core stays Fiber-free |
+| WebSocket | [`jsonrpcws`](https://pkg.go.dev/github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcws) | yes | multiplexed calls, bounded fan-out, push |
+| stdio (LSP/MCP) | [`jsonrpcstdio`](https://pkg.go.dev/github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcstdio) | yes | both framings, sequential by default, client included |
+| custom | — | — | `HandleRPCJSONRawMessage(ctx, bytes)` is the whole contract |
 
-// Fiber v3 — go get github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiberv3
-import "github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiberv3"
-app.Post("/rpc", jsonrpcfiberv3.Handler(rpc))
-```
+Choosing between them, and how the size limits stack:
+[docs/transports.md](docs/transports.md).
 
-Same semantics as the net/http adapter: 415 on a non-JSON Content-Type, 204
-for notifications, JSON-RPC errors as HTTP 200. Bound the body with Fiber's
-`BodyLimit`; compressed bodies (`Content-Encoding`) are rejected with 415 to
-avoid decompression bombs. Method routing is Fiber's job — register with
-`app.Post`. Because these are nested modules pinned to the core version,
-`go get` them only after the matching core `v2.x` tag is published.
+## How it compares
 
-## WebSocket
+| | this library | sourcegraph/jsonrpc2 | creachadair/jrpc2 | net/rpc |
+|---|---|---|---|---|
+| Batches | yes | no | yes | no (1.0) |
+| stdio LSP + NDJSON framings | yes | yes | yes | partial |
+| HTTP / WebSocket servers | yes / yes | no / DIY | yes / DIY | no |
+| Typed handlers | generics | raw handler | reflection | reflection |
+| DoS limits by default | yes | no | partial | no |
+| OpenRPC generation | yes | no | methods list | no |
 
-The `jsonrpcws` subpackage (built on `github.com/coder/websocket`) serves
-JSON-RPC over WebSocket: one frame per message, concurrent dispatch with
-bounded fan-out (`WithMaxConcurrentCalls`, 16 by default), responses
-correlate by id and may arrive out of order, notifications produce no frame.
-Browser handshakes are same-origin by default (`WithOriginPatterns` to allow
-more); frames above `WithMaxMessageSize` (1 MiB default) close the
-connection with status 1009.
-
-```go
-mux.Handle("/ws", jsonrpcws.Handler(serv))
-```
-
-After the upgrade the connection is hijacked — `http.Server` timeouts no
-longer apply, and the handler manages the lifecycle itself: when the read
-side ends, in-flight calls are canceled; each response write is bounded by
-`WithWriteTimeout` (10s default), and a write that cannot complete (slow
-reader) closes the connection. Idle policy (pings/deadlines) and per-client
-connection limits are the application's call.
-
-## stdio (LSP / MCP)
-
-The `jsonrpcstdio` subpackage (stdlib only, no new dependencies) serves
-JSON-RPC over a byte stream — the transport of Language Server Protocol and
-Model Context Protocol servers. The framing is an explicit choice, because
-the two ecosystems are mutually unintelligible on the wire:
-`FramingContentLength` (LSP: `Content-Length: N` header blocks) or
-`FramingNDJSON` (MCP stdio: one JSON message per line).
-
-```go
-// The whole server: blocks until the peer closes stdin (returns nil) or the
-// stream fails (returns the error). Logs must go to stderr — stdout is the
-// protocol channel.
-err := jsonrpcstdio.Serve(ctx, serv, jsonrpcstdio.FramingContentLength, os.Stdin, os.Stdout)
-```
-
-Dispatch is strictly sequential and in-order by default (LSP's ordering
-rules; MCP SDKs do the same) — `WithMaxConcurrentCalls` opts into
-ws-style bounded fan-out. One inbound frame is capped by
-`WithMaxMessageSize` (8 MiB default); violating the cap is fatal to the
-stream, so for a graceful band set the dispatcher's `SetMaxMessageSize` at
-or below it. Handlers push server-initiated notifications
-(`publishDiagnostics`, resource updates) through the `jsonrpc.Pusher` in the
-request context, same as WebSocket.
-
-The client side mirrors `jsonrpcws`: `NewClient(framing, r, w)` over the
-child process's `StdoutPipe`/`StdinPipe`, multiplexed calls correlated by
-id, pushes delivered to `WithNotificationHandler`. Process lifecycle
-(spawning, stderr, the close-stdin → wait → SIGTERM ladder) stays with the
-application.
-
+The full matrix — including **where the alternatives win** (reverse calls,
+dependency minimalism, production mileage) — is in
+[docs/COMPARISON.md](docs/COMPARISON.md).
 
 ## Documentation
 
-Task-oriented guides live in [docs/](docs/README.md):
-[choosing a transport](docs/transports.md) ·
-[building an MCP/LSP server](docs/mcp-lsp.md) ·
-[typed handlers & errors](docs/typed-handlers.md) ·
-[clients & batches](docs/clients.md) ·
-[middleware & auth](docs/middleware-auth.md) ·
-[server push](docs/push-subscriptions.md) ·
-[production hardening & limits](docs/production.md) ·
-[observability](docs/observability.md) ·
-[OpenRPC generation](docs/openrpc.md) ·
-[migrating](docs/migrating.md).
+Task-oriented guides in [docs/](docs/README.md):
+
+- [Choosing a transport](docs/transports.md) — and the limits stack
+- [Building an MCP or LSP server](docs/mcp-lsp.md) — stdio end to end
+- [Typed handlers & errors](docs/typed-handlers.md) — the error-privacy model
+- [Calling a server](docs/clients.md) — HTTP/WS/stdio clients, batches
+- [Middleware & auth](docs/middleware-auth.md) — chains, per-method policy
+- [Server push & subscriptions](docs/push-subscriptions.md) — `Pusher` lifecycle
+- [Production hardening](docs/production.md) — every limit in one table
+- [Observability](docs/observability.md) — the `SetObserver` hook
+- [OpenRPC](docs/openrpc.md) · [Migrating](docs/migrating.md) ·
+  [Benchmarks](docs/BENCHMARKS.md) · [Comparison](docs/COMPARISON.md)
+
 API reference: [pkg.go.dev](https://pkg.go.dev/github.com/gumeniukcom/golang-jsonrpc2/v2).
 
-## Changelog
+## Versioning
 
-See [CHANGELOG.md](CHANGELOG.md).
+The module path is `github.com/gumeniukcom/golang-jsonrpc2/v2` (SemVer,
+[Keep a Changelog](CHANGELOG.md)). Go 1.25+. Migrating from v1 or from
+another JSON-RPC library: [docs/migrating.md](docs/migrating.md).
+
+## License
+
+[MIT](LICENSE).
