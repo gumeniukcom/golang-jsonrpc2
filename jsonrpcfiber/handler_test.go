@@ -11,7 +11,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	jsonrpc "github.com/gumeniukcom/golang-jsonrpc2/v2"
-	"github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcfiber"
+	"github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiber"
 )
 
 func newApp(t *testing.T) *fiber.App {

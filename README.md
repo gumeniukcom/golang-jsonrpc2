@@ -83,12 +83,12 @@ Adapters for the [Fiber](https://gofiber.io) framework live in separate nested
 modules, so Fiber and fasthttp never enter the core module's `go.mod`:
 
 ```go
-// Fiber v2 — go get github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcfiber
-import "github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcfiber"
+// Fiber v2 — go get github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiber
+import "github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiber"
 app.Post("/rpc", jsonrpcfiber.Handler(rpc))
 
-// Fiber v3 — go get github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcfiberv3
-import "github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcfiberv3"
+// Fiber v3 — go get github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiberv3
+import "github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiberv3"
 app.Post("/rpc", jsonrpcfiberv3.Handler(rpc))
 ```
 

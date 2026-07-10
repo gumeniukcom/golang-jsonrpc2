@@ -1,4 +1,4 @@
-module github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcfiberv3
+module github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiberv3
 
 go 1.25.0
 
