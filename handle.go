@@ -22,6 +22,12 @@ import (
 // limits actually bound parsing work. The message-size check does not bound
 // raw body size — cap that at the transport layer too (e.g.
 // http.MaxBytesReader), so oversized payloads are not even read into memory.
+// A rejected payload that verifiably carries no id (a notification, or a
+// batch of only notifications — detected by a cheap byte scan) is rejected
+// silently: the spec forbids answering notifications, and an id:null reply
+// would be uncorrelatable anyway. Payloads whose id-lessness cannot be
+// proven keep the id:null rejection, matching the spec's parse-error
+// convention.
 func (j *JSONRPC) HandleRPCJSONRawMessage(ctx context.Context, data json.RawMessage) json.RawMessage {
 	cfg := j.cfg.Load()
 
@@ -31,6 +37,14 @@ func (j *JSONRPC) HandleRPCJSONRawMessage(ctx context.Context, data json.RawMess
 		if cfg.logger != nil {
 			cfg.logger.DebugContext(ctx, "jsonrpc: request too large",
 				slog.Int("max", cfg.maxMessageSize), slog.Int("got", len(data)))
+		}
+		if lacksResponseID(data) {
+			// The payload verifiably carries no id: a notification (or an
+			// all-notification batch) MUST NOT be answered even when
+			// rejected — and with no id, no caller could correlate the
+			// id:null reply anyway; on a multiplexed connection it would
+			// only fail innocent concurrent calls.
+			return nil
 		}
 		return errorRequestTooLarge()
 	}
@@ -50,6 +64,9 @@ func (j *JSONRPC) HandleRPCJSONRawMessage(ctx context.Context, data json.RawMess
 				if cfg.logger != nil {
 					cfg.logger.DebugContext(ctx, "jsonrpc: batch too large",
 						slog.Int("max", cfg.maxBatchSize), slog.Int("got_at_least", n))
+				}
+				if lacksResponseID(data) {
+					return nil // all-notification batch: MUST NOT answer (see the size-cap branch)
 				}
 				return errorBatchTooLarge()
 			}
@@ -180,6 +197,115 @@ func approxBatchLen(data []byte, limit int) int {
 	return count
 }
 
+// lacksResponseID reports whether a rejected payload verifiably carries no
+// id a response could correlate to: a single request object without a
+// top-level "id" member, or a batch array whose every element is an object
+// without one. Reject paths use it to honor the notification silence rule
+// without unmarshaling: like approxBatchLen it is a single allocation-free
+// byte scan, so it does not weaken the bound the rejection exists to enforce
+// (the transport-level cap still bounds the scan length).
+//
+// It is conservative toward replying: malformed structure, non-object batch
+// elements, an empty batch, or a key the scan cannot prove different from
+// "id" (escape sequences) all return false — those payloads keep their
+// id:null rejection, the spec's parse-error convention.
+func lacksResponseID(data []byte) bool {
+	data = bytes.TrimSpace(data)
+	if len(data) < 2 {
+		return false
+	}
+	// Keys are inspected at the top level of each request object: depth 1
+	// for a single object, depth 2 for the objects inside a batch array.
+	var keyDepth int
+	switch data[0] {
+	case '{':
+		keyDepth = 1
+	case '[':
+		keyDepth = 2
+	default:
+		return false
+	}
+
+	var (
+		depth              int
+		inString, escaped  bool
+		keyPos             = false // a string at keyDepth is a key, not a value
+		inKey, keyEscaped  bool
+		keyStart           int
+		sawElement, closed bool
+	)
+	for i := 0; i < len(data); i++ {
+		b := data[i]
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case b == '\\':
+				escaped = true
+				keyEscaped = true
+			case b == '"':
+				inString = false
+				if inKey {
+					inKey = false
+					// A key containing escape sequences could spell "id" in
+					// disguise (a \u-escaped form): unprovable, so keep the reply.
+					if keyEscaped || string(data[keyStart:i]) == "id" {
+						return false
+					}
+				}
+			}
+			continue
+		}
+		if closed {
+			return false // trailing bytes after the structure ended: malformed
+		}
+		switch b {
+		case '"':
+			inString = true
+			if depth == keyDepth && keyPos {
+				inKey = true
+				keyStart = i + 1
+				keyEscaped = false
+			}
+		case '{':
+			depth++
+			if depth == keyDepth {
+				keyPos = true
+				sawElement = true
+			}
+		case '[':
+			if keyDepth == 2 && depth == 1 {
+				return false // a nested array is not a request object
+			}
+			depth++
+		case '}', ']':
+			if depth == 0 {
+				return false // unbalanced: malformed
+			}
+			depth--
+			if depth == 0 {
+				closed = true
+			}
+		case ':':
+			if depth == keyDepth {
+				keyPos = false
+			}
+		case ',':
+			if depth == keyDepth {
+				keyPos = true
+			}
+		case ' ', '\t', '\n', '\r':
+		default:
+			if keyDepth == 2 && depth == 1 {
+				return false // a bare batch element (number, true, ...) is not a request object
+			}
+		}
+	}
+	// A well-formed scan ends closed; an empty batch has no notifications to
+	// stay silent for, so it keeps its reply.
+	return closed && !inString && (keyDepth == 1 || sawElement)
+}
+
 // splitBatchElements splits the raw bytes of a JSON array into its top-level
 // elements without unmarshaling them, so each element can be decoded (and
 // fail) independently. ok is false when the array structure itself is broken
@@ -284,7 +410,24 @@ func (j *JSONRPC) handleRPC(ctx context.Context, cfg *config, data *structs.Requ
 		start = time.Now()
 	}
 
-	resp := j.handleValidated(ctx, cfg, data)
+	if err := validateRequest(data); err != nil {
+		// An invalid request is never a notification: only a syntactically
+		// valid request without an id member earns notification silence. An
+		// invalid one is answered with an error carrying id:null even when
+		// it has no id (spec §5: "If there was an error in detecting the id
+		// ... it MUST be Null"; the §7 examples answer id-less invalid
+		// requests), so it is observed as a call, not a notification.
+		id := data.ID
+		if len(id) > 0 && !codec.Valid(id) {
+			// Never echo a broken id back — it would corrupt the response.
+			id = nil
+		}
+		resp := j.errorResponse(ctx, cfg, err, InvalidRequestErrorCode, id)
+		j.observe(ctx, cfg, resp, data.Method, false, start)
+		return resp
+	}
+
+	resp := j.dispatch(ctx, cfg, data)
 
 	j.observe(ctx, cfg, resp, data.Method, len(data.ID) == 0, start)
 
@@ -318,23 +461,6 @@ func (j *JSONRPC) observe(ctx context.Context, cfg *config, resp *structs.Respon
 		Duration:     time.Since(start),
 		Notification: notification,
 	})
-}
-
-// handleValidated validates and dispatches a request, returning the response
-// that would be sent (before notification suppression).
-func (j *JSONRPC) handleValidated(ctx context.Context, cfg *config, data *structs.Request) *structs.Response {
-	// Only a syntactically valid request without an id member is a
-	// notification; a request that fails validation is answered with an
-	// id:null error even when it carries no id (spec §5 examples).
-	if err := validateRequest(data); err != nil {
-		id := data.ID
-		if len(id) > 0 && !codec.Valid(id) {
-			// Never echo a broken id back — it would corrupt the response.
-			id = nil
-		}
-		return j.errorResponse(ctx, cfg, err, InvalidRequestErrorCode, id)
-	}
-	return j.dispatch(ctx, cfg, data)
 }
 
 // dispatch runs one validated request under the configured timeout regime.

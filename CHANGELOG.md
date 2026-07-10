@@ -6,6 +6,24 @@ follows [Semantic Versioning](https://semver.org) for the `/v2` module.
 
 ## [Unreleased] — v2.4.0
 
+### Fixed
+
+- **Spec conformance:** an INVALID request without an id now draws the
+  spec-required `-32600` error with `"id":null` instead of being silently
+  swallowed (spec §5, §7 examples) — both standalone and as a batch entry.
+  Only a syntactically valid request without an id is a notification and
+  earns silence; valid notifications (including unknown-method ones) remain
+  unanswered as before.
+- Oversized payloads (`SetMaxMessageSize`) and oversized batches
+  (`SetMaxBatchSize`) that verifiably carry no id — a notification, or a
+  batch of only notifications, detected by an allocation-free byte scan —
+  are now rejected silently, honoring the "MUST NOT reply to a
+  notification" rule. Previously the `id:null` rejection could fail every
+  in-flight call of a multiplexed client (WebSocket/stdio) because an
+  uncorrelatable error fails all pending calls. Payloads whose id-lessness
+  cannot be proven (an id present, malformed structure, escaped keys) keep
+  the `id:null` rejection, matching the spec's parse-error convention.
+
 ### Added
 
 - `jsonrpcstdio`: stdio transport (stdlib only, lives in the core module) —
