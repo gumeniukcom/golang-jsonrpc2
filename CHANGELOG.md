@@ -68,7 +68,7 @@ follows [Semantic Versioning](https://semver.org) for the `/v2` module.
   seam, so adopting `encoding/json/v2` when it stabilizes (≈ Go 1.27) is a
   one-file change. The default build stays on `encoding/json` (v1) and works
   on Go 1.25+ with no build flags. CI runs the full suite (core + adapters)
-  under `GOEXPERIMENT=jsonv2`. See MIGRATION.md.
+  under `GOEXPERIMENT=jsonv2`. See docs/dev/json-v2-plan.md.
 
 ### Added
 

@@ -1,3 +1,6 @@
+> Internal engineering plan for developing this library itself — not user
+> documentation. For migrating *your* code, see [../migrating.md](../migrating.md).
+
 # encoding/json/v2 migration plan
 
 The standard library's `encoding/json/v2` (with `encoding/json/jsontext`) is

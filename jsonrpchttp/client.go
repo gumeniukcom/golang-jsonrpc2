@@ -161,7 +161,7 @@ func (c *Client) CallBatch(ctx context.Context, specs []jsonrpc.Spec) ([]jsonrpc
 	// server returns exactly one response per call, so a longer array is a
 	// hostile server padding the frame, not worth scanning.
 	// json/v2 migration point: streaming array decode. jsontext.Decoder
-	// replaces this when json/v2 lands (see MIGRATION.md); kept on
+	// replaces this when json/v2 lands (see docs/dev/json-v2-plan.md); kept on
 	// encoding/json until then.
 	dec := json.NewDecoder(bytes.NewReader(body))
 	tok, err := dec.Token() // expect '['

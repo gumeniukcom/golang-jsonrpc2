@@ -42,8 +42,9 @@ type CallInfo struct {
 // It does NOT observe frame-level rejects that never become a request object:
 // oversized messages/batches (SetMaxMessageSize / SetMaxBatchSize), top-level
 // JSON parse errors, and a single request that fails to decode are all
-// answered before dispatch. Those are logged at Debug (SetLogger); meter them
-// at the transport layer if you need them.
+// answered before dispatch. Of those, only the oversize rejects are logged
+// (at Debug, via SetLogger); parse errors are answered without logging —
+// meter them at the transport layer if you need them.
 //
 // It runs synchronously on the request goroutine, so it must be cheap and
 // non-blocking; offload slow work (network export) to another goroutine. In a

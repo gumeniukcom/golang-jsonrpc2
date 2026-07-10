@@ -385,7 +385,7 @@ func (c *Client) deliverBatch(data []byte) {
 	c.mu.Unlock()
 
 	// json/v2 migration point: streaming array decode. jsontext.Decoder
-	// replaces this when json/v2 lands (see MIGRATION.md); kept on
+	// replaces this when json/v2 lands (see docs/dev/json-v2-plan.md); kept on
 	// encoding/json until then.
 	dec := json.NewDecoder(bytes.NewReader(data))
 	if _, err := dec.Token(); err != nil { // consume '['

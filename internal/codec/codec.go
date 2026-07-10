@@ -10,12 +10,12 @@
 // package delegates to encoding/json (v1), so the default build is unchanged
 // and compiles on Go 1.25+ with no build flags. When json/v2 is stable, swap
 // the bodies here (optionally opting into stricter behavior such as
-// RejectDuplicateNames) — see MIGRATION.md.
+// RejectDuplicateNames) — see docs/dev/json-v2-plan.md.
 //
 // It does not cover the easyjson-generated struct codecs (Request, Response,
 // Error, ID) or the two streaming batch-array decoders in the transport
 // clients; those are separate, larger migration steps documented in
-// MIGRATION.md.
+// docs/dev/json-v2-plan.md.
 package codec
 
 import "encoding/json"
