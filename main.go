@@ -24,8 +24,10 @@ const DefaultMaxBatchSize = 100
 type config struct {
 	errors             ErrorMessages
 	methods            RPCMethods
+	composed           RPCMethods // methods wrapped in middleware; == methods when no middleware
 	methodInfo         map[string]MethodInfo
 	globalInterceptors InterceptorCallMethods
+	middlewares        []Middleware
 	defaultTimeOut     time.Duration
 	logger             *slog.Logger
 	maxBatchSize       int
@@ -54,6 +56,7 @@ func (c *config) clone() *config {
 		next.methodInfo[k] = v
 	}
 	next.globalInterceptors = append(InterceptorCallMethods(nil), c.globalInterceptors...)
+	next.middlewares = append([]Middleware(nil), c.middlewares...)
 	return &next
 }
 
@@ -82,6 +85,7 @@ func New() *JSONRPC {
 			RequestTimeLimit:        "request_time_limit",
 		},
 		methods:          RPCMethods{},
+		composed:         RPCMethods{},
 		methodInfo:       map[string]MethodInfo{},
 		defaultTimeOut:   30 * time.Second,
 		logger:           slog.Default(),
@@ -92,13 +96,29 @@ func New() *JSONRPC {
 }
 
 // updateConfig clones the current snapshot, applies mutate, and atomically
-// installs the result. Returning an error from mutate aborts the swap.
+// installs the result. Returning an error from mutate aborts the swap. The
+// composed dispatch map is carried over as-is — use updateRegistry for
+// mutations that change methods or middleware.
 func (j *JSONRPC) updateConfig(mutate func(*config) error) error {
+	return j.update(mutate, false)
+}
+
+// updateRegistry is updateConfig for mutations that change the method
+// registry or the middleware chain: it recomposes the dispatch map, running
+// every middleware factory once per registered method.
+func (j *JSONRPC) updateRegistry(mutate func(*config) error) error {
+	return j.update(mutate, true)
+}
+
+func (j *JSONRPC) update(mutate func(*config) error, recompose bool) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	next := j.cfg.Load().clone()
 	if err := mutate(next); err != nil {
 		return err
+	}
+	if recompose {
+		next.compose()
 	}
 	j.cfg.Store(next)
 	return nil
@@ -197,7 +217,7 @@ func (j *JSONRPC) call(
 		return j.errorResponse(ctx, cfg, err, code, id)
 	}
 
-	method, ok := cfg.methods[methodName]
+	method, ok := cfg.composed[methodName]
 	if !ok {
 		return j.errorResponse(ctx, cfg, nil, MethodNotFoundErrorCode, id)
 	}

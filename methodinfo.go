@@ -3,6 +3,7 @@ package jsonrpc
 import (
 	"reflect"
 	"sort"
+	"time"
 )
 
 // ErrorInfo describes one error a method may return. It is documentation-only
@@ -48,6 +49,10 @@ type MethodInfo struct {
 	Errors      []ErrorInfo
 	Examples    []ExamplePair
 	Extra       map[string]any
+
+	// Timeout overrides the server default (SetDefaultTimeOut) for this
+	// method. Zero means inherit the default.
+	Timeout time.Duration
 }
 
 // clone returns a copy safe to hand to callers: the slices and the Extra map
@@ -111,6 +116,17 @@ func WithErrors(errs ...ErrorInfo) MethodOption {
 func WithExample(name string, params, result any) MethodOption {
 	return func(mi *MethodInfo) {
 		mi.Examples = append(mi.Examples, ExamplePair{Name: name, Params: params, Result: result})
+	}
+}
+
+// WithTimeout sets a per-method execution timeout that overrides the server
+// default (SetDefaultTimeOut) for this method only. Non-positive values are
+// ignored (the default stays in effect).
+func WithTimeout(d time.Duration) MethodOption {
+	return func(mi *MethodInfo) {
+		if d > 0 {
+			mi.Timeout = d
+		}
 	}
 }
 

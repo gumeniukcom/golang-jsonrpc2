@@ -24,7 +24,7 @@ func (j *JSONRPC) RegisterMethod(name string, method RPCMethod) error {
 // rejecting a duplicate name. Both maps are kept in lockstep so Methods()
 // always mirrors the dispatch registry.
 func (j *JSONRPC) registerMethod(name string, method RPCMethod, info MethodInfo) error {
-	return j.updateConfig(func(c *config) error {
+	return j.updateRegistry(func(c *config) error {
 		if strings.HasPrefix(name, "rpc.") {
 			return fmt.Errorf("method name %q: the \"rpc.\" prefix is reserved by the JSON-RPC 2.0 spec", name)
 		}
