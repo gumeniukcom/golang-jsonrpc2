@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/internal/codec"
 	"github.com/gumeniukcom/golang-jsonrpc2/v2/structs"
 )
 
@@ -35,7 +36,7 @@ func toID(id any) structs.ID {
 	case json.RawMessage:
 		return structs.ID(v)
 	case string:
-		b, err := json.Marshal(v)
+		b, err := codec.Marshal(v)
 		if err != nil {
 			return structs.ID("null")
 		}
@@ -51,7 +52,7 @@ func toID(id any) structs.ID {
 		}
 		return structs.ID(strconv.AppendFloat(nil, v, 'g', -1, 64))
 	default:
-		b, err := json.Marshal(v)
+		b, err := codec.Marshal(v)
 		if err != nil {
 			return structs.ID("null")
 		}

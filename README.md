@@ -77,6 +77,49 @@ Prefer a custom transport? `HandleRPCJSONRawMessage(ctx, body)` is the whole
 contract — feed it raw bytes, write back what it returns (empty result means
 "no response": a notification).
 
+### Fiber (v2 and v3)
+
+Adapters for the [Fiber](https://gofiber.io) framework live in separate nested
+modules, so Fiber and fasthttp never enter the core module's `go.mod`:
+
+```go
+// Fiber v2 — go get github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcfiber
+import "github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcfiber"
+app.Post("/rpc", jsonrpcfiber.Handler(rpc))
+
+// Fiber v3 — go get github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcfiberv3
+import "github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpcfiberv3"
+app.Post("/rpc", jsonrpcfiberv3.Handler(rpc))
+```
+
+Same semantics as the net/http adapter: 415 on a non-JSON Content-Type, 204
+for notifications, JSON-RPC errors as HTTP 200. Bound the body with Fiber's
+`BodyLimit`; compressed bodies (`Content-Encoding`) are rejected with 415 to
+avoid decompression bombs. Method routing is Fiber's job — register with
+`app.Post`. Because these are nested modules pinned to the core version,
+`go get` them only after the matching core `v2.x` tag is published.
+
+### WebSocket
+
+The `jsonrpcws` subpackage (built on `github.com/coder/websocket`) serves
+JSON-RPC over WebSocket: one frame per message, concurrent dispatch with
+bounded fan-out (`WithMaxConcurrentCalls`, 16 by default), responses
+correlate by id and may arrive out of order, notifications produce no frame.
+Browser handshakes are same-origin by default (`WithOriginPatterns` to allow
+more); frames above `WithMaxMessageSize` (1 MiB default) close the
+connection with status 1009.
+
+```go
+mux.Handle("/ws", jsonrpcws.Handler(serv))
+```
+
+After the upgrade the connection is hijacked — `http.Server` timeouts no
+longer apply, and the handler manages the lifecycle itself: when the read
+side ends, in-flight calls are canceled; each response write is bounded by
+`WithWriteTimeout` (10s default), and a write that cannot complete (slow
+reader) closes the connection. Idle policy (pings/deadlines) and per-client
+connection limits are the application's call.
+
 ### Request
 
 ```bash
@@ -212,6 +255,80 @@ time limit: a handler that completes keeps its response. Only enforced mode
 aborting a still-running call reports `request_time_limit` on cancellation,
 logging the real cause server-side.
 
+## Client
+
+Both transport subpackages ship a client implementing the `jsonrpc.Caller`
+contract (`Call`/`Notify`); `jsonrpc.CallResult[R]` mirrors the server-side
+typed handlers. JSON-RPC error responses come back as `*structs.Error`
+(match with `errors.As`), transport failures as ordinary errors.
+
+```go
+// HTTP: stateless, one POST per call.
+c := jsonrpchttp.NewClient("http://localhost:8088/")
+sum, err := jsonrpc.CallResult[int](ctx, c, "sum", map[string]int{"a": 3, "b": 4})
+
+// WebSocket: one connection, concurrent calls correlated by id.
+wc, err := jsonrpcws.DialClient(ctx, "ws://localhost:8088/ws")
+defer wc.Close()
+sum, err = jsonrpc.CallResult[int](ctx, wc, "sum", map[string]int{"a": 3, "b": 4})
+```
+
+### Server push (WebSocket)
+
+Over WebSocket a handler can push server-initiated notifications to the
+client. The transport injects a `jsonrpc.Pusher` into the request context;
+the handler retrieves it and sends notifications that reach the client's
+`WithNotificationHandler`. Plain HTTP has no push channel, so
+`PusherFromContext` reports `false` there — handlers degrade gracefully.
+
+The pusher stays valid for the life of the connection, so a subscription can
+push from a background goroutine after the handler returns — use a fresh
+context there, not the handler's request context (which cancels on return).
+`Notify` returns an error once the connection closes, the signal to stop; a
+push loop must honor it. On the client, `WithNotificationHandler` receives
+`method` and `params` straight from the server — treat them as untrusted.
+
+```go
+// Server handler:
+serv.RegisterMethod("subscribe", func(ctx context.Context, _ json.RawMessage) (json.RawMessage, int, error) {
+	if p, ok := jsonrpc.PusherFromContext(ctx); ok {
+		_ = p.Notify(ctx, "tick", map[string]int{"n": 1})
+	}
+	return json.RawMessage(`"ok"`), jsonrpc.OK, nil
+})
+
+// Client:
+c, _ := jsonrpcws.DialClient(ctx, "ws://localhost:8088/ws",
+	jsonrpcws.WithNotificationHandler(func(method string, params json.RawMessage) {
+		log.Printf("push %s: %s", method, params)
+	}))
+```
+
+Both clients also send batches via `CallBatch` (the `jsonrpc.BatchCaller`
+contract): pass `[]jsonrpc.Spec`, get `[]jsonrpc.BatchResult` aligned by
+index (notification specs get a zero slot), and decode each with
+`jsonrpc.BatchResultAs[R]`. Over WebSocket, batch responses correlate by id
+alongside concurrent single calls on the same connection.
+
+```go
+results, err := c.CallBatch(ctx, []jsonrpc.Spec{
+	{Method: "sum", Params: map[string]int{"a": 1, "b": 2}},
+	{Method: "log", Params: "hi", Notify: true}, // no response slot
+})
+sum, err := jsonrpc.BatchResultAs[int](results[0])
+```
+
+A batch larger than the client's limit (`WithMaxBatchSize` /
+`WithClientMaxBatchSize`, default `DefaultMaxBatchSize` = 100) fails locally
+with `ErrBatchTooLarge` — the server would otherwise reject an oversized batch
+with a single unaddressable error, which the WebSocket client cannot correlate
+to the call.
+
+On a decoded error response `structs.Error.Data` holds a `json.RawMessage`
+— unmarshal it into a concrete type yourself. `Error.Message` and `Data`
+come from the server: treat them as untrusted input, and escape or
+structure them before writing to logs.
+
 ## Middleware
 
 Global middleware wraps every method (including ones registered later) with
@@ -236,6 +353,27 @@ Per-method timeouts override the server default:
 jrpc.RegisterTyped(serv, "report.build", buildReport,
 	jrpc.WithTimeout(5*time.Minute)) // this method may run longer than the default
 ```
+
+## Observability
+
+`SetObserver` installs a hook called once per dispatched request with its
+outcome — method, client-facing code, error, duration, and whether it was a
+notification. Unlike middleware (which wraps a registered handler), it runs on
+the dispatch path, so it sees *every* request including method-not-found,
+invalid requests, timeouts, and panics; in a batch it fires per entry. Use it
+for metrics, tracing, or request logging:
+
+```go
+serv.SetObserver(func(ctx context.Context, info jrpc.CallInfo) {
+	rpcLatency.WithLabelValues(info.Method, strconv.Itoa(info.Code)).Observe(info.Duration.Seconds())
+})
+```
+
+The hook runs on the request goroutine (concurrently across batch entries) —
+keep it cheap and concurrency-safe, offload slow exports, and treat
+`info.Method` as untrusted. Frame-level rejects that never become a request
+object (oversized messages/batches, top-level parse errors) are not observed —
+they are logged at Debug instead. A panic in the hook is recovered and logged.
 
 ## OpenRPC document
 

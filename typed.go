@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/internal/codec"
 )
 
 // Typed wraps a strongly-typed handler into an RPCMethod, removing the
@@ -18,7 +20,7 @@ func Typed[P any, R any](fn func(ctx context.Context, params P) (R, error)) RPCM
 	return func(ctx context.Context, data json.RawMessage) (json.RawMessage, int, error) {
 		var params P
 		if len(data) > 0 {
-			if err := json.Unmarshal(data, &params); err != nil {
+			if err := codec.Unmarshal(data, &params); err != nil {
 				return nil, InvalidParamsErrorCode, fmt.Errorf("unmarshal params: %w", err)
 			}
 		}
@@ -28,7 +30,7 @@ func Typed[P any, R any](fn func(ctx context.Context, params P) (R, error)) RPCM
 			return nil, InternalErrorCode, err
 		}
 
-		raw, err := json.Marshal(result)
+		raw, err := codec.Marshal(result)
 		if err != nil {
 			return nil, InternalErrorCode, fmt.Errorf("marshal result: %w", err)
 		}

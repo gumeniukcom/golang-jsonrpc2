@@ -13,6 +13,7 @@ import (
 	"reflect"
 
 	jsonrpc "github.com/gumeniukcom/golang-jsonrpc2/v2"
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/internal/codec"
 )
 
 // Info describes the service; it maps to the OpenRPC "info" object.
@@ -131,7 +132,7 @@ func Document(info Info, methods []jsonrpc.MethodInfo) (json.RawMessage, error) 
 		doc.Components = &components{Schemas: b.defs}
 	}
 
-	return json.Marshal(doc)
+	return codec.Marshal(doc)
 }
 
 // paramsOf maps a params type to OpenRPC content descriptors: a struct type

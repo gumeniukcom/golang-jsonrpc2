@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/internal/codec"
 	"github.com/gumeniukcom/golang-jsonrpc2/v2/structs"
 )
 
@@ -136,7 +137,7 @@ func errorParse() json.RawMessage { return respParseError }
 // is not a request object is an InvalidRequest (-32600). json.Valid runs
 // only on this error path.
 func errorForMalformed(data []byte) json.RawMessage {
-	if json.Valid(data) {
+	if codec.Valid(data) {
 		return errorInvalidRequest()
 	}
 	return errorParse()
