@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 follows [Semantic Versioning](https://semver.org) for the `/v2` module.
 
+## [Unreleased]
+
+### Added
+
+- OpenRPC service discovery: `openrpc.RegisterDiscover` registers the
+  spec-defined `rpc.discover` method, answering with the document built per
+  call from the live registry (always fresh, registration order
+  irrelevant). The method-name validation now permits exactly
+  `"rpc.discover"` — the one sanctioned use of the reserved `rpc.` prefix;
+  every other `rpc.*` name is still rejected.
+- `Typed`/`RegisterTyped` handlers now accept `"params": []` as the
+  positional spelling of "no parameters" for non-list param types (many
+  clients and the OpenRPC discover definition use it); it yields the zero
+  value exactly like absent params. Non-empty arrays into struct params
+  remain invalid_method_parameters.
+
 ## [2.4.0]
 
 ### Fixed

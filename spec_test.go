@@ -297,7 +297,8 @@ func TestRequestDecodeCopiesBuffer(t *testing.T) {
 }
 
 // Method names with the reserved "rpc." prefix must be rejected at
-// registration time.
+// registration time — with the single sanctioned exception of
+// "rpc.discover", the OpenRPC discovery extension (see methods.go).
 func TestRPCPrefixRegistrationRejected(t *testing.T) {
 	j := New()
 	err := j.RegisterMethod("rpc.internal", func(_ context.Context, _ json.RawMessage) (json.RawMessage, int, error) {

@@ -68,6 +68,157 @@ func buildServer(t *testing.T) *jsonrpc.JSONRPC {
 	return j
 }
 
+func TestRegisterDiscover(t *testing.T) {
+	j := buildServer(t)
+
+	if err := openrpc.RegisterDiscover(j, openrpc.Info{Title: "Test API", Version: "1.2.3"},
+		jsonrpc.WithTags("meta")); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	// rpc.discover is now in the registry (permitted despite the reserved prefix).
+	var found bool
+	for _, m := range j.Methods() {
+		if m.Name == "rpc.discover" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("rpc.discover not registered")
+	}
+
+	// Dispatching it returns the OpenRPC document, listing every method including
+	// rpc.discover itself.
+	req := []byte(`{"jsonrpc":"2.0","id":1,"method":"rpc.discover","params":{}}`)
+	resp := j.HandleRPCJSONRawMessage(context.Background(), req)
+	var env struct {
+		Result json.RawMessage `json:"result"`
+		Error  *struct {
+			Code int `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(resp, &env); err != nil {
+		t.Fatalf("bad response: %v (%s)", err, resp)
+	}
+	if env.Error != nil {
+		t.Fatalf("rpc.discover errored: code %d", env.Error.Code)
+	}
+	var doc struct {
+		OpenRPC string `json:"openrpc"`
+		Info    struct {
+			Title string `json:"title"`
+		} `json:"info"`
+		Methods []struct {
+			Name string `json:"name"`
+		} `json:"methods"`
+	}
+	if err := json.Unmarshal(env.Result, &doc); err != nil {
+		t.Fatalf("result is not an OpenRPC document: %v", err)
+	}
+	if doc.OpenRPC != "1.3.2" || doc.Info.Title != "Test API" {
+		t.Errorf("unexpected doc header: %+v", doc)
+	}
+	names := map[string]bool{}
+	for _, m := range doc.Methods {
+		names[m.Name] = true
+	}
+	for _, want := range []string{"user.create", "tree.walk", "legacy", "rpc.discover"} {
+		if !names[want] {
+			t.Errorf("document is missing method %q", want)
+		}
+	}
+
+	// Registering it twice is a duplicate error.
+	if err := openrpc.RegisterDiscover(j, openrpc.Info{Title: "x", Version: "0"}); err == nil {
+		t.Error("second RegisterDiscover must fail (duplicate)")
+	}
+}
+
+// Every common client spelling of "no params" must work: absent, null, {},
+// and the positional [] (the OpenRPC spec's own discover definition uses []).
+func TestRegisterDiscoverParamsVariants(t *testing.T) {
+	j := buildServer(t)
+	if err := openrpc.RegisterDiscover(j, openrpc.Info{Title: "t", Version: "1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, params := range []string{"", `,"params":null`, `,"params":{}`, `,"params":[]`} {
+		req := []byte(`{"jsonrpc":"2.0","id":1,"method":"rpc.discover"` + params + `}`)
+		resp := j.HandleRPCJSONRawMessage(context.Background(), req)
+		var env struct {
+			Error *struct {
+				Code int `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(resp, &env); err != nil {
+			t.Fatalf("params %q: bad response %s", params, resp)
+		}
+		if env.Error != nil {
+			t.Errorf("params %q: rpc.discover errored with code %d", params, env.Error.Code)
+		}
+	}
+}
+
+// The document is built per call, so a method registered AFTER discovery was
+// first called still appears — registration order does not matter.
+func TestRegisterDiscoverReflectsLateRegistrations(t *testing.T) {
+	j := buildServer(t)
+	if err := openrpc.RegisterDiscover(j, openrpc.Info{Title: "t", Version: "1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	discover := func() map[string]bool {
+		resp := j.HandleRPCJSONRawMessage(context.Background(),
+			[]byte(`{"jsonrpc":"2.0","id":1,"method":"rpc.discover"}`))
+		var env struct {
+			Result struct {
+				Methods []struct {
+					Name    string `json:"name"`
+					Summary string `json:"summary"`
+				} `json:"methods"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(resp, &env); err != nil {
+			t.Fatalf("bad response: %v (%s)", err, resp)
+		}
+		names := map[string]bool{}
+		for _, m := range env.Result.Methods {
+			names[m.Name] = true
+		}
+		return names
+	}
+
+	if discover()["late.method"] {
+		t.Fatal("late.method must not exist yet")
+	}
+	if err := jsonrpc.RegisterTyped(j, "late.method", func(context.Context, struct{}) (string, error) {
+		return "", nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !discover()["late.method"] {
+		t.Error("a method registered after the first discover call must appear in the next document")
+	}
+}
+
+// User options override the built-in summary (options apply last-write-wins).
+func TestRegisterDiscoverSummaryOverride(t *testing.T) {
+	j := buildServer(t)
+	if err := openrpc.RegisterDiscover(j, openrpc.Info{Title: "t", Version: "1"},
+		jsonrpc.WithSummary("custom summary")); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range j.Methods() {
+		if m.Name == "rpc.discover" {
+			if m.Summary != "custom summary" {
+				t.Errorf("summary = %q, want the override", m.Summary)
+			}
+			return
+		}
+	}
+	t.Fatal("rpc.discover not found")
+}
+
 func TestDocumentGeneratesValidOpenRPC(t *testing.T) {
 	j := buildServer(t)
 

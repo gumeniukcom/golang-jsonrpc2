@@ -33,6 +33,28 @@ func TestJSONRPC_RegisterMethod(t *testing.T) {
 	})
 }
 
+func TestJSONRPC_ReservedPrefix(t *testing.T) {
+	noop := func(context.Context, json.RawMessage) (json.RawMessage, int, error) { return nil, 0, nil }
+
+	t.Run("arbitrary rpc.* is rejected", func(t *testing.T) {
+		j := New()
+		if err := j.RegisterMethod("rpc.internal", noop); err == nil {
+			t.Error("rpc.-prefixed method must be rejected (JSON-RPC 2.0 §4.1)")
+		}
+	})
+
+	t.Run("rpc.discover is permitted (OpenRPC discovery extension)", func(t *testing.T) {
+		j := New()
+		if err := j.RegisterMethod("rpc.discover", noop); err != nil {
+			t.Errorf("rpc.discover must be registrable, got %v", err)
+		}
+		// And still rejects a duplicate of it.
+		if err := j.RegisterMethod("rpc.discover", noop); err == nil {
+			t.Error("duplicate rpc.discover must be rejected")
+		}
+	})
+}
+
 func TestJSONRPC_CallEmpty(t *testing.T) {
 	j := New()
 

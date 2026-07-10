@@ -9,6 +9,7 @@
 package openrpc
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 
@@ -75,6 +76,40 @@ type method struct {
 	// Extra carries MethodInfo.Extra as a single x-extension object; OpenRPC
 	// allows x- prefixed extension members.
 	Extra map[string]any `json:"x-extra,omitempty"`
+}
+
+// RegisterDiscover registers the OpenRPC service-discovery method
+// "rpc.discover" on rpc. Each call builds the document from the server's own
+// Methods() at that moment (~a hundred microseconds for a realistic
+// registry), so it always reflects the live registry — including methods
+// registered after RegisterDiscover, and rpc.discover itself. Registration
+// order does not matter. "rpc.discover" is the one "rpc."-prefixed name a
+// server may register: JSON-RPC 2.0 §4.1 reserves the prefix for extensions,
+// and this is the extension the OpenRPC spec defines.
+//
+// The method takes no params and returns the raw OpenRPC document. A build
+// error (rare — an Example or Extra value that fails to marshal) reaches the
+// client as a generic internal_error; the detail is logged server-side only.
+// The default summary/description can be overridden by passing WithSummary /
+// WithDescription in opts (options apply in order, last write wins).
+//
+// Security: the document is the complete map of the API — every method name,
+// param/result schema, Examples and Extra values verbatim — served to anyone
+// who can call methods, with no filtering. If any method is internal-only,
+// either gate "rpc.discover" itself with middleware (see
+// docs/middleware-auth.md; note an authz index built from Methods() must be
+// built AFTER this registration, or default-deny unknown methods) or skip
+// RegisterDiscover and serve a filtered Document() from your own handler or
+// endpoint instead (see docs/openrpc.md).
+func RegisterDiscover(rpc *jsonrpc.JSONRPC, info Info, opts ...jsonrpc.MethodOption) error {
+	handler := func(context.Context, struct{}) (json.RawMessage, error) {
+		return Document(info, rpc.Methods())
+	}
+	base := []jsonrpc.MethodOption{
+		jsonrpc.WithSummary("Return the service's OpenRPC description"),
+		jsonrpc.WithDescription("The service-discovery method from the OpenRPC specification: returns the OpenRPC 1.3.2 document describing every method, its param/result schemas, and its documentation."),
+	}
+	return jsonrpc.RegisterTyped(rpc, "rpc.discover", handler, append(base, opts...)...)
 }
 
 // Document renders the OpenRPC 1.3.2 JSON document for the given methods —
@@ -154,6 +189,12 @@ func (b *builder) paramsOf(t reflect.Type) (string, []contentDescriptor) {
 				Required: !f.omitempty,
 				Schema:   b.schemaOf(f.typ),
 			})
+		}
+		if len(cds) == 0 {
+			// A zero-field struct means "no parameters": announcing
+			// paramStructure by-name would (meaninglessly) forbid the
+			// positional spelling of an empty params list.
+			return "", cds
 		}
 		return "by-name", cds
 	}

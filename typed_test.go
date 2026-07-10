@@ -2,6 +2,7 @@ package jsonrpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -169,5 +170,32 @@ func TestRegisterTyped_Duplicate(t *testing.T) {
 	}
 	if err := RegisterTyped(j, "dup", fn); err == nil {
 		t.Error("duplicate registration must fail")
+	}
+}
+
+// "params": [] is the positional spelling of "no parameters" (the OpenRPC
+// spec's own rpc.discover uses it): for a non-list P it must yield the zero
+// value, exactly like absent params — while a NON-empty array into a struct
+// stays an invalid-params error, and list-shaped P keeps decoding arrays.
+func TestTyped_EmptyArrayParams(t *testing.T) {
+	type in struct {
+		A int `json:"a"`
+	}
+	structMethod := Typed(func(_ context.Context, p in) (int, error) { return p.A, nil })
+
+	if _, code, err := structMethod(context.Background(), json.RawMessage("[]")); err != nil || code != OK {
+		t.Errorf("[] into struct params must act as zero value, got code=%d err=%v", code, err)
+	}
+	if _, code, err := structMethod(context.Background(), json.RawMessage(" [\n]\t")); err != nil || code != OK {
+		t.Errorf("whitespace-padded [] must act as zero value, got code=%d err=%v", code, err)
+	}
+	if _, code, _ := structMethod(context.Background(), json.RawMessage("[1]")); code != InvalidParamsErrorCode {
+		t.Errorf("non-empty array into struct params must stay invalid, got code=%d", code)
+	}
+
+	sliceMethod := Typed(func(_ context.Context, p []int) (int, error) { return len(p), nil })
+	raw, code, err := sliceMethod(context.Background(), json.RawMessage("[]"))
+	if err != nil || code != OK || string(raw) != "0" {
+		t.Errorf("[] into slice params must decode as empty slice, got %s code=%d err=%v", raw, code, err)
 	}
 }

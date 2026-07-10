@@ -35,6 +35,33 @@ registered through the untyped `RegisterMethod` appears with nil
 that non-nil zero-field type, so a generator can distinguish "no parameters"
 from "no type information".
 
+## In-band discovery: rpc.discover
+
+`RegisterDiscover` serves the document over the RPC surface itself as the
+OpenRPC-standard `rpc.discover` method — the one `rpc.`-prefixed name the
+registry permits (JSON-RPC 2.0 reserves the prefix for exactly such
+extensions):
+
+```go
+_ = openrpc.RegisterDiscover(serv, openrpc.Info{Title: "My API", Version: "1.0.0"})
+```
+
+The document is built per call from the live registry, so it always includes
+every method — ones registered later, and `rpc.discover` itself.
+Registration order does not matter.
+
+**Think before exposing it.** Unlike the HTTP-endpoint flow above, in-band
+discovery is reachable by anyone who can call methods, and it publishes the
+whole map with **no filtering** — if some methods are internal-only, either
+gate `rpc.discover` with middleware (see
+[middleware-auth.md](middleware-auth.md); build the authz index *after* this
+registration, or default-deny unknown methods) or skip `RegisterDiscover`
+and serve a filtered `Document()` from your own handler. Two more notes for
+unauthenticated exposure: the response is the largest object the server
+emits and is not bounded by `SetMaxMessageSize` (that caps requests), and a
+batch of discover calls multiplies it — the default batch cap (100) bounds
+the amplification, but consider rate limiting.
+
 ## Security notes
 
 The document is a complete map of your API — method names, type shapes,
