@@ -120,6 +120,37 @@ side ends, in-flight calls are canceled; each response write is bounded by
 reader) closes the connection. Idle policy (pings/deadlines) and per-client
 connection limits are the application's call.
 
+### stdio (LSP / MCP)
+
+The `jsonrpcstdio` subpackage (stdlib only, no new dependencies) serves
+JSON-RPC over a byte stream — the transport of Language Server Protocol and
+Model Context Protocol servers. The framing is an explicit choice, because
+the two ecosystems are mutually unintelligible on the wire:
+`FramingContentLength` (LSP: `Content-Length: N` header blocks) or
+`FramingNDJSON` (MCP stdio: one JSON message per line).
+
+```go
+// The whole server: blocks until the peer closes stdin (returns nil) or the
+// stream fails (returns the error). Logs must go to stderr — stdout is the
+// protocol channel.
+err := jsonrpcstdio.Serve(ctx, serv, jsonrpcstdio.FramingContentLength, os.Stdin, os.Stdout)
+```
+
+Dispatch is strictly sequential and in-order by default (LSP's ordering
+rules; MCP SDKs do the same) — `WithMaxConcurrentCalls` opts into
+ws-style bounded fan-out. One inbound frame is capped by
+`WithMaxMessageSize` (8 MiB default); violating the cap is fatal to the
+stream, so for a graceful band set the dispatcher's `SetMaxMessageSize` at
+or below it. Handlers push server-initiated notifications
+(`publishDiagnostics`, resource updates) through the `jsonrpc.Pusher` in the
+request context, same as WebSocket.
+
+The client side mirrors `jsonrpcws`: `NewClient(framing, r, w)` over the
+child process's `StdoutPipe`/`StdinPipe`, multiplexed calls correlated by
+id, pushes delivered to `WithNotificationHandler`. Process lifecycle
+(spawning, stderr, the close-stdin → wait → SIGTERM ladder) stays with the
+application.
+
 ### Request
 
 ```bash

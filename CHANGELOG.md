@@ -4,7 +4,31 @@ All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 follows [Semantic Versioning](https://semver.org) for the `/v2` module.
 
-## [Unreleased] — v2.3.0
+## [Unreleased] — v2.4.0
+
+### Added
+
+- `jsonrpcstdio`: stdio transport (stdlib only, lives in the core module) —
+  the wire of LSP and MCP servers. Two framings behind one API, selected by
+  a mandatory `Framing` enum: `FramingContentLength` (LSP base protocol)
+  and `FramingNDJSON` (MCP stdio). Server is a single blocking
+  `Serve(ctx, rpc, framing, r, w, opts...)`: returns `nil` on clean stdin
+  EOF (orderly shutdown), drains in-flight handlers on every path, injects
+  a `jsonrpc.Pusher` for server-initiated notifications, and latches the
+  writer on exit so a late background `Notify` gets an error instead of a
+  SIGPIPE. Dispatch is strictly sequential and in-order by default
+  (`DefaultMaxConcurrentCalls = 1`, per LSP ordering rules and MCP SDK
+  precedent); `WithMaxConcurrentCalls` opts into ws-style bounded fan-out.
+  Inbound frames are capped by `WithMaxMessageSize` (8 MiB default, fatal
+  on violation — checked before allocation); well-framed garbage draws
+  -32700/-32600 and the stream survives. Wrong-framing misconfiguration is
+  detected and reported with a hint at the right constant. Client mirrors
+  `jsonrpcws` minus batches: `NewClient(framing, r, w)` (no ctx — no
+  handshake), `Call`/`Notify`, id-correlated multiplexing,
+  `WithNotificationHandler` for pushes; process lifecycle stays with the
+  caller.
+
+## [2.3.0]
 
 ### Performance
 
