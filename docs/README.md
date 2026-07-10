@@ -26,8 +26,7 @@ Suggested reading order:
 Comparison and performance data:
 
 - [Feature comparison with other Go JSON-RPC libraries](COMPARISON.md)
-  *(added together with the benchmark suite)*
-- [Benchmarks](BENCHMARKS.md) *(added together with the benchmark suite)*
+- [Benchmarks](BENCHMARKS.md)
 
 Engineering notes that are about developing this library itself (not using
 it) live under [docs/dev/](dev/).

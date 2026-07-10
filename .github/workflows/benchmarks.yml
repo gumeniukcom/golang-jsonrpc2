@@ -1,0 +1,81 @@
+# Cross-library comparison benchmarks (benchmarks/ nested module).
+#
+# Shared-runner absolute numbers are NOISE — they are uploaded as an
+# artifact for eyeballing, never committed, and never published. The
+# canonical numbers in docs/BENCHMARKS.md come from a quiet local machine
+# (see the disclosure header there). The only assertion this workflow makes
+# is about ORDERING: our end-to-end pipe result must not be slower than the
+# competitors it is documented as beating, with a generous tolerance to
+# absorb runner noise. Response protocol (benchmarks/README.md): one red
+# run → re-run it; two consecutive → re-measure locally and update
+# docs/BENCHMARKS.md or retract the claim. Failures auto-open an issue so a
+# red scheduled run is not silently missed.
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 3 * *' # monthly, 3rd day 06:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write # for the on-failure tripwire issue only
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: 'stable'
+
+      - name: govulncheck (non-blocking, dev-only module)
+        working-directory: benchmarks
+        continue-on-error: true
+        # pinned for reproducibility; bump deliberately (same pin as ci.yml)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+      - name: Run comparison suite
+        working-directory: benchmarks
+        run: go test -run '^$' -bench . -benchmem -count=6 -timeout 40m ./... | tee results.txt
+
+      - name: Upload raw results
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: benchmarks/results.txt
+          retention-days: 90
+
+      - name: Ordering tripwire (ours vs alternatives on the pipe arena)
+        working-directory: benchmarks
+        run: |
+          median() { # median ns/op of a benchmark across -count runs; empty when absent
+            grep -E "^Benchmark$1-" results.txt | awk '{print $3}' | sort -n \
+              | awk '{a[NR]=$1} END {if (NR==0) exit; print (NR%2 ? a[(NR+1)/2] : (a[NR/2]+a[NR/2+1])/2)}'
+          }
+          OURS=$(median "Pipe/ours")
+          SG=$(median "Pipe/sourcegraph")
+          CR=$(median "Pipe/creachadair")
+          echo "medians ns/op: ours=$OURS sourcegraph=$SG creachadair=$CR"
+          # Tolerance 1.5x. The docs claim we beat BOTH alternatives, so losing
+          # to either one beyond tolerance trips the wire.
+          awk -v o="$OURS" -v s="$SG" -v c="$CR" 'BEGIN {
+            if (o == "" || s == "" || c == "") { print "missing results"; exit 1 }
+            if (o * 1.5 > s || o * 1.5 > c) { print "ordering inverted beyond tolerance"; exit 1 }
+          }'
+
+      - name: Open issue on tripwire failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create benchmarks --description "benchmark tripwire" --color d4c5f9 --force 2>/dev/null || true
+          gh issue create -R "${{ github.repository }}" \
+            --title "Benchmarks workflow failed (run ${{ github.run_id }})" \
+            --body "The monthly comparison run failed or the pipe-arena ordering inverted beyond tolerance. Protocol (benchmarks/README.md): re-run once via workflow_dispatch; two consecutive failures → re-measure locally (make bench-save) and update docs/BENCHMARKS.md or retract the claim. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --label benchmarks
