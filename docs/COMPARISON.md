@@ -1,6 +1,6 @@
 # How this library compares
 
-> Snapshot as of **2026-07-10**. Versions compared:
+> Snapshot as of **2026-07-10** (v2.5.0). Versions compared:
 > `sourcegraph/jsonrpc2 v0.2.1`, `creachadair/jrpc2 v1.3.5`, Go 1.25 stdlib
 > `net/rpc`. Libraries evolve — **corrections welcome, please open an
 > issue.** Cells about other libraries link to their documentation where
@@ -31,7 +31,7 @@ below it.
 | DoS limits (message size, batch cap, bounded concurrency) | yes, defaults on | no | partial (concurrency) | no |
 | Panic recovery in handlers | yes | no | yes | no |
 | Observability hook | yes (`SetObserver`) | `OnSend`/`OnRecv` | `RPCLog` interface | no |
-| OpenRPC / service description | yes (generated) | no | `rpc.serverInfo` (methods list) | no |
+| OpenRPC / service description | yes (generated + `rpc.discover`) | no | `rpc.serverInfo` (methods list) | no |
 | Spec quirk worth knowing | — | id reuse across batch n/a | strict version checks | 1.0 wire format |
 | Core direct dependencies | 3 | 1 (gorilla/websocket) | 2 | 0 (stdlib) |
 | Maintenance (snapshot date) | active | maintenance mode² | active | stdlib (frozen) |
