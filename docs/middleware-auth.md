@@ -67,7 +67,13 @@ jrpc.RegisterTyped(serv, "admin.purge", purgeHandler, jrpc.WithExtra("auth", "ad
 authz := buildAuthzIndex(serv.Methods()) // method → required role, built once
 
 serv.Use(func(method string, next jrpc.RPCMethod) jrpc.RPCMethod {
-	required := authz[method]
+	// DEFAULT-DENY: a method missing from the index (registered after the
+	// index was built, or simply unannotated) requires the highest role —
+	// a permissive default here silently opens every forgotten method.
+	required, known := authz[method]
+	if !known {
+		required = roleAdmin
+	}
 	return func(ctx context.Context, data json.RawMessage) (json.RawMessage, int, error) {
 		if !principalFrom(ctx).Has(required) {
 			return nil, codeForbidden, errors.New("forbidden") // text stays server-side
@@ -79,7 +85,10 @@ serv.Use(func(method string, next jrpc.RPCMethod) jrpc.RPCMethod {
 
 Register `codeForbidden` with `RegisterError` so clients get a stable
 machine-readable code; the error text never leaves the server
-([typed-handlers.md](typed-handlers.md#the-error-model)).
+([typed-handlers.md](typed-handlers.md#the-error-model)). The `WithExtra`
+metadata driving this policy is private — it is never published in generated
+service descriptions (that is what `WithPublishedExtra` is for), so the
+authorization markup itself cannot leak through `rpc.discover`.
 
 Note the closure shape: `method` (and anything derived from it, like
 `required`) is resolved **once at composition time**, outside the returned

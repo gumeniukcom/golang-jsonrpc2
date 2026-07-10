@@ -48,17 +48,37 @@ type MethodInfo struct {
 	Tags        []string
 	Errors      []ErrorInfo
 	Examples    []ExamplePair
-	Extra       map[string]any
+
+	// Extra carries arbitrary generator/middleware hints (auth level,
+	// internal-only, ...). It is PRIVATE metadata: never published in
+	// generated service descriptions. Use PublishedExtra for values that
+	// should appear in the document.
+	Extra map[string]any
+
+	// PublishedExtra carries key/values that generators publish verbatim
+	// (the openrpc package emits them as the x-extra extension). Anything
+	// here is visible to every consumer of the document — no secrets, no
+	// authorization markup.
+	PublishedExtra map[string]any
+
+	// Public opts the method into generated service discovery
+	// (openrpc.RegisterDiscover / openrpc.Public). The zero value hides the
+	// method from discovery — fail-closed: a forgotten annotation hides
+	// instead of leaking. Public is documentation visibility only, NOT
+	// access control: the method remains callable; gate calls with
+	// middleware.
+	Public bool
 
 	// Timeout overrides the server default (SetDefaultTimeOut) for this
 	// method. Zero means inherit the default.
 	Timeout time.Duration
 }
 
-// clone returns a copy safe to hand to callers: the slices and the Extra map
-// are duplicated so external mutation cannot corrupt the internal registry.
-// Element values (ErrorInfo is a value type; the any values in Examples and
-// Extra) are shared by reference and are documented as read-only.
+// clone returns a copy safe to hand to callers: the slices and both metadata
+// maps are duplicated so external mutation cannot corrupt the internal
+// registry. Element values (ErrorInfo is a value type; the any values in
+// Examples, Extra, and PublishedExtra) are shared by reference and are
+// documented as read-only.
 func (mi MethodInfo) clone() MethodInfo {
 	c := mi
 	if mi.Tags != nil {
@@ -74,6 +94,12 @@ func (mi MethodInfo) clone() MethodInfo {
 		c.Extra = make(map[string]any, len(mi.Extra))
 		for k, v := range mi.Extra {
 			c.Extra[k] = v
+		}
+	}
+	if mi.PublishedExtra != nil {
+		c.PublishedExtra = make(map[string]any, len(mi.PublishedExtra))
+		for k, v := range mi.PublishedExtra {
+			c.PublishedExtra[k] = v
 		}
 	}
 	return c
@@ -130,9 +156,12 @@ func WithTimeout(d time.Duration) MethodOption {
 	}
 }
 
-// WithExtra sets an arbitrary key/value on the method's metadata, an escape
-// hatch for generator-specific hints (auth level, PAT-allowed, internal-only).
-// Repeated calls with the same key overwrite.
+// WithExtra sets an arbitrary key/value on the method's PRIVATE metadata, an
+// escape hatch for generator/middleware hints (auth level, PAT-allowed,
+// internal-only). Private means never published in generated service
+// descriptions — safe for authorization markup. To publish a value in the
+// document, use WithPublishedExtra. Repeated calls with the same key
+// overwrite.
 func WithExtra(key string, value any) MethodOption {
 	return func(mi *MethodInfo) {
 		if mi.Extra == nil {
@@ -140,6 +169,31 @@ func WithExtra(key string, value any) MethodOption {
 		}
 		mi.Extra[key] = value
 	}
+}
+
+// WithPublishedExtra sets a key/value that generators publish verbatim in the
+// service description (the openrpc package emits it as the x-extra extension
+// member). Everything set here is visible to every consumer of the document:
+// no secrets, no authorization markup — keep those in WithExtra, which is
+// never published. Repeated calls with the same key overwrite.
+func WithPublishedExtra(key string, value any) MethodOption {
+	return func(mi *MethodInfo) {
+		if mi.PublishedExtra == nil {
+			mi.PublishedExtra = make(map[string]any)
+		}
+		mi.PublishedExtra[key] = value
+	}
+}
+
+// WithPublic opts the method into generated service discovery
+// (openrpc.RegisterDiscover and the openrpc.Public filter). Discovery is
+// default-deny: methods without this option never appear in the generated
+// document, so a forgotten annotation hides instead of leaking. Public
+// controls documentation visibility only, NOT access control — the method
+// remains callable by anyone the transport lets through; gate calls with
+// middleware.
+func WithPublic() MethodOption {
+	return func(mi *MethodInfo) { mi.Public = true }
 }
 
 // Methods returns a snapshot of every registered method's MethodInfo, sorted

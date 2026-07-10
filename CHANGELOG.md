@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 follows [Semantic Versioning](https://semver.org) for the `/v2` module.
 
+## [Unreleased]
+
+### Changed — behavior of the day-old v2.5.0 discovery (deliberate, act now)
+
+- **`rpc.discover` is now default-deny**: only methods registered with the
+  new `WithPublic()` option appear in the generated document (previously:
+  every method). A forgotten annotation now hides instead of leaking.
+  Hidden is not protected — gate calls with middleware as before.
+- **`WithExtra` metadata is now private** — never published in generated
+  documents (previously: published verbatim as `x-extra`, which leaked
+  authorization markup such as `auth: admin`). Values meant for consumers
+  go through the new `WithPublishedExtra`, which is what `x-extra` now
+  carries. `Document()` itself still renders exactly the slice you pass it.
+
+### Added
+
+- `WithPublic()` / `MethodInfo.Public` — opt-in discovery visibility.
+- `WithPublishedExtra(k, v)` / `MethodInfo.PublishedExtra` — explicitly
+  published metadata (`x-extra`).
+- `openrpc.Public(methods)` — the public-subset filter for the
+  `Document()` flow.
+- `openrpc.DiscoverHandler(rpc, info)` — the exported discover handler;
+  `RegisterDiscover` is now thin sugar over it.
+
 ## [2.5.0]
 
 ### Added

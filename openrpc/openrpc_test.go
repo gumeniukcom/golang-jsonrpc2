@@ -45,7 +45,9 @@ func buildServer(t *testing.T) *jsonrpc.JSONRPC {
 		jsonrpc.WithTags("users", "write"),
 		jsonrpc.WithErrors(jsonrpc.ErrorInfo{Code: 1001, Message: "user_exists", Description: "duplicate"}),
 		jsonrpc.WithExample("basic", createUserParams{Name: "bob", Age: 42}, user{ID: 1, Name: "bob"}),
-		jsonrpc.WithExtra("auth", "required"),
+		jsonrpc.WithExtra("auth", "required"), // private: must never reach the document
+		jsonrpc.WithPublishedExtra("stability", "beta"),
+		jsonrpc.WithPublic(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -54,6 +56,7 @@ func buildServer(t *testing.T) *jsonrpc.JSONRPC {
 	if err := jsonrpc.RegisterTyped(j, "tree.walk",
 		func(_ context.Context, n node) (node, error) { return n, nil },
 		jsonrpc.WithDeprecated(),
+		jsonrpc.WithPublic(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -122,10 +125,14 @@ func TestRegisterDiscover(t *testing.T) {
 	for _, m := range doc.Methods {
 		names[m.Name] = true
 	}
-	for _, want := range []string{"user.create", "tree.walk", "legacy", "rpc.discover"} {
+	for _, want := range []string{"user.create", "tree.walk", "rpc.discover"} {
 		if !names[want] {
-			t.Errorf("document is missing method %q", want)
+			t.Errorf("document is missing public method %q", want)
 		}
+	}
+	// Discovery is default-deny: the unannotated method must NOT appear.
+	if names["legacy"] {
+		t.Error("unannotated method \"legacy\" must be hidden from discovery")
 	}
 
 	// Registering it twice is a duplicate error.
@@ -193,7 +200,7 @@ func TestRegisterDiscoverReflectsLateRegistrations(t *testing.T) {
 	}
 	if err := jsonrpc.RegisterTyped(j, "late.method", func(context.Context, struct{}) (string, error) {
 		return "", nil
-	}); err != nil {
+	}, jsonrpc.WithPublic()); err != nil {
 		t.Fatal(err)
 	}
 	if !discover()["late.method"] {
@@ -300,8 +307,13 @@ func TestDocumentGeneratesValidOpenRPC(t *testing.T) {
 	if len(cu.Examples) != 1 || len(cu.Examples[0].Params) == 0 {
 		t.Fatalf("examples missing: %+v", cu.Examples)
 	}
-	if cu.Extra["auth"] != "required" {
-		t.Fatalf("x-extra missing: %+v", cu.Extra)
+	// Private metadata (WithExtra) must never be published; only
+	// WithPublishedExtra values appear as x-extra.
+	if _, leaked := cu.Extra["auth"]; leaked {
+		t.Fatalf("private Extra leaked into the document: %+v", cu.Extra)
+	}
+	if cu.Extra["stability"] != "beta" {
+		t.Fatalf("published extra missing: %+v", cu.Extra)
 	}
 
 	tw := doc.Methods[byName["tree.walk"]]
@@ -418,5 +430,65 @@ func TestSchemaKinds(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Fatalf("schema output must contain %q: %s", want, s)
 		}
+	}
+}
+
+// Discovery visibility is default-deny end to end: a server that registers
+// discovery without annotating anything publishes only rpc.discover itself.
+func TestDiscoverDefaultDeny(t *testing.T) {
+	j := jsonrpc.New()
+	if err := jsonrpc.RegisterTyped(j, "secret.op", func(context.Context, struct{}) (string, error) {
+		return "", nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := openrpc.RegisterDiscover(j, openrpc.Info{Title: "t", Version: "1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := j.HandleRPCJSONRawMessage(context.Background(),
+		[]byte(`{"jsonrpc":"2.0","id":1,"method":"rpc.discover"}`))
+	var env struct {
+		Result struct {
+			Methods []struct {
+				Name string `json:"name"`
+			} `json:"methods"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(resp, &env); err != nil {
+		t.Fatalf("bad response: %v (%s)", err, resp)
+	}
+	if len(env.Result.Methods) != 1 || env.Result.Methods[0].Name != "rpc.discover" {
+		t.Fatalf("default-deny document must contain only rpc.discover, got %+v", env.Result.Methods)
+	}
+	// Hidden is not blocked: the unlisted method is still callable.
+	resp = j.HandleRPCJSONRawMessage(context.Background(),
+		[]byte(`{"jsonrpc":"2.0","id":2,"method":"secret.op"}`))
+	var call struct {
+		Error *json.RawMessage `json:"error"`
+	}
+	if err := json.Unmarshal(resp, &call); err != nil {
+		t.Fatalf("bad response: %v (%s)", err, resp)
+	}
+	if call.Error != nil {
+		t.Fatalf("hidden method must remain callable, got error %s", *call.Error)
+	}
+}
+
+// openrpc.Public filters to the WithPublic subset without mutating input.
+func TestPublicFilter(t *testing.T) {
+	j := buildServer(t) // user.create + tree.walk public, legacy not
+	all := j.Methods()
+	pub := openrpc.Public(all)
+
+	names := map[string]bool{}
+	for _, m := range pub {
+		names[m.Name] = true
+	}
+	if !names["user.create"] || !names["tree.walk"] || names["legacy"] {
+		t.Fatalf("Public() filtered wrong set: %v", names)
+	}
+	if len(all) != 3 {
+		t.Fatalf("input slice must be untouched, got %d entries", len(all))
 	}
 }

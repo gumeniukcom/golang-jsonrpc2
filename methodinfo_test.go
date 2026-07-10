@@ -193,3 +193,26 @@ func TestRegisterTyped_NoOptsStillRecords(t *testing.T) {
 		t.Errorf("bare registration should have no metadata, got %+v", m)
 	}
 }
+
+// PublishedExtra must be deep-copied by Methods() like Extra is — mutating a
+// snapshot must not corrupt the registry.
+func TestMethodsDeepCopiesPublishedExtra(t *testing.T) {
+	j := New()
+	err := RegisterTyped(j, "m", func(_ context.Context, _ struct{}) (int, error) { return 0, nil },
+		WithPublishedExtra("k", "v"), WithExtra("private", "p"), WithPublic())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap := j.Methods()
+	snap[0].PublishedExtra["k"] = "corrupted"
+	snap[0].Extra["private"] = "corrupted"
+
+	fresh := j.Methods()
+	if fresh[0].PublishedExtra["k"] != "v" || fresh[0].Extra["private"] != "p" {
+		t.Fatalf("snapshot mutation leaked into the registry: %+v", fresh[0])
+	}
+	if !fresh[0].Public {
+		t.Fatal("Public flag lost in snapshot")
+	}
+}

@@ -73,43 +73,69 @@ type method struct {
 	Result         *contentDescriptor  `json:"result,omitempty"`
 	Errors         []errObj            `json:"errors,omitempty"`
 	Examples       []examplePairing    `json:"examples,omitempty"`
-	// Extra carries MethodInfo.Extra as a single x-extension object; OpenRPC
-	// allows x- prefixed extension members.
+	// Extra carries MethodInfo.PublishedExtra as a single x-extension object
+	// (OpenRPC allows x- prefixed extension members). MethodInfo.Extra is
+	// private metadata and is never published.
 	Extra map[string]any `json:"x-extra,omitempty"`
 }
 
+// Public filters methods down to the ones opted into discovery with
+// jsonrpc.WithPublic. Discovery is default-deny: an unannotated method is
+// excluded, so a forgotten annotation hides instead of leaking. Use it to
+// feed Document the same view RegisterDiscover serves:
+//
+//	doc, _ := openrpc.Document(info, openrpc.Public(serv.Methods()))
+//
+// Document itself never filters — pass it serv.Methods() verbatim to render
+// an internal, everything-included description for a trusted audience.
+func Public(methods []jsonrpc.MethodInfo) []jsonrpc.MethodInfo {
+	out := make([]jsonrpc.MethodInfo, 0, len(methods))
+	for _, mi := range methods {
+		if mi.Public {
+			out = append(out, mi)
+		}
+	}
+	return out
+}
+
+// DiscoverHandler returns the rpc.discover handler: it builds the OpenRPC
+// document per call from the PUBLIC subset (jsonrpc.WithPublic) of the
+// server's live registry, so it always reflects the methods registered at
+// call time. It is exported so servers with special needs (own gating, own
+// method name, transport-specific registration) can compose it themselves;
+// most servers use RegisterDiscover.
+func DiscoverHandler(rpc *jsonrpc.JSONRPC, info Info) func(context.Context, struct{}) (json.RawMessage, error) {
+	return func(context.Context, struct{}) (json.RawMessage, error) {
+		return Document(info, Public(rpc.Methods()))
+	}
+}
+
 // RegisterDiscover registers the OpenRPC service-discovery method
-// "rpc.discover" on rpc. Each call builds the document from the server's own
-// Methods() at that moment (~a hundred microseconds for a realistic
-// registry), so it always reflects the live registry — including methods
-// registered after RegisterDiscover, and rpc.discover itself. Registration
-// order does not matter. "rpc.discover" is the one "rpc."-prefixed name a
-// server may register: JSON-RPC 2.0 §4.1 reserves the prefix for extensions,
-// and this is the extension the OpenRPC spec defines.
+// "rpc.discover" on rpc, serving the document built per call from the live
+// registry. "rpc.discover" is the one "rpc."-prefixed name a server may
+// register: JSON-RPC 2.0 §4.1 reserves the prefix for extensions, and this
+// is the extension the OpenRPC spec defines.
+//
+// Discovery is DEFAULT-DENY: only methods registered with
+// jsonrpc.WithPublic appear in the document (rpc.discover marks itself
+// public). A method without the annotation stays hidden from discovery — but
+// hidden is not protected: it remains callable, and access control is
+// middleware's job (docs/middleware-auth.md). Private metadata
+// (jsonrpc.WithExtra) is never published; only jsonrpc.WithPublishedExtra
+// values appear, as the x-extra extension.
 //
 // The method takes no params and returns the raw OpenRPC document. A build
-// error (rare — an Example or Extra value that fails to marshal) reaches the
-// client as a generic internal_error; the detail is logged server-side only.
-// The default summary/description can be overridden by passing WithSummary /
-// WithDescription in opts (options apply in order, last write wins).
-//
-// Security: the document is the complete map of the API — every method name,
-// param/result schema, Examples and Extra values verbatim — served to anyone
-// who can call methods, with no filtering. If any method is internal-only,
-// either gate "rpc.discover" itself with middleware (see
-// docs/middleware-auth.md; note an authz index built from Methods() must be
-// built AFTER this registration, or default-deny unknown methods) or skip
-// RegisterDiscover and serve a filtered Document() from your own handler or
-// endpoint instead (see docs/openrpc.md).
+// error (rare — an Example or PublishedExtra value that fails to marshal)
+// reaches the client as a generic internal_error; the detail is logged
+// server-side only. The default summary/description can be overridden via
+// opts (options apply in order, last write wins).
 func RegisterDiscover(rpc *jsonrpc.JSONRPC, info Info, opts ...jsonrpc.MethodOption) error {
-	handler := func(context.Context, struct{}) (json.RawMessage, error) {
-		return Document(info, rpc.Methods())
-	}
 	base := []jsonrpc.MethodOption{
+		jsonrpc.WithPublic(),
 		jsonrpc.WithSummary("Return the service's OpenRPC description"),
-		jsonrpc.WithDescription("The service-discovery method from the OpenRPC specification: returns the OpenRPC 1.3.2 document describing every method, its param/result schemas, and its documentation."),
+		jsonrpc.WithDescription("The service-discovery method from the OpenRPC specification: returns the OpenRPC 1.3.2 document describing every public method, its param/result schemas, and its documentation."),
 	}
-	return jsonrpc.RegisterTyped(rpc, "rpc.discover", handler, append(base, opts...)...)
+	return jsonrpc.RegisterTyped(rpc, "rpc.discover", DiscoverHandler(rpc, info), append(base, opts...)...)
 }
 
 // Document renders the OpenRPC 1.3.2 JSON document for the given methods —
@@ -156,8 +182,8 @@ func Document(info Info, methods []jsonrpc.MethodInfo) (json.RawMessage, error) 
 			})
 		}
 
-		if len(mi.Extra) > 0 {
-			m.Extra = mi.Extra
+		if len(mi.PublishedExtra) > 0 {
+			m.Extra = mi.PublishedExtra
 		}
 
 		doc.Methods = append(doc.Methods, m)
