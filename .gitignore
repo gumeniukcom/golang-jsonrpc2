@@ -1,3 +1,5 @@
 .idea/
 .env
 .claude/
+# local benchmark runs (curated results live in docs/BENCHMARKS.md)
+benchmarks/results/*.txt

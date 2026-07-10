@@ -89,6 +89,27 @@ jobs:
             (cd "$m" && go test -race ./...)
           done
 
+  # The comparison-benchmark suite is a nested module with competitor
+  # dependencies; it is compile-coupled to the core via a replace directive,
+  # so core refactors can break it. Build+vet only — no benchmark execution
+  # on PRs (absolute numbers on shared runners are meaningless; the monthly
+  # benchmarks workflow handles runs).
+  benchmarks-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: 'stable'
+
+      - name: Build and vet benchmarks module
+        working-directory: benchmarks
+        run: |
+          go build ./...
+          go vet ./...
+
   lint:
     runs-on: ubuntu-latest
     steps:
