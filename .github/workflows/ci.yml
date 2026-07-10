@@ -35,10 +35,14 @@ jobs:
       - name: Coverage summary
         run: go tool cover -func=coverage.out | tail -1
 
-  # encoding/json/v2 lands as the default in a future Go release; run the
-  # suite under the experiment now so the migration path stays green.
-  jsonv2:
+  # The Fiber adapters are separate nested modules (to keep Fiber/fasthttp
+  # out of the core go.mod), so `go test ./...` at the root does not cover
+  # them — test each on its own.
+  adapters:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [jsonrpcfiber, jsonrpcfiberv3]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -47,10 +51,43 @@ jobs:
         with:
           go-version: 'stable'
 
-      - name: Test with GOEXPERIMENT=jsonv2
-        env:
-          GOEXPERIMENT: jsonv2
+      - name: Test ${{ matrix.module }}
+        working-directory: ${{ matrix.module }}
         run: go test -race ./...
+
+      - name: Lint ${{ matrix.module }}
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: v2.10.1
+          working-directory: ${{ matrix.module }}
+
+      - name: govulncheck ${{ matrix.module }}
+        working-directory: ${{ matrix.module }}
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+  # encoding/json/v2 lands as the default in a future Go release; run the
+  # suite under the experiment now so the migration path (see MIGRATION.md and
+  # internal/codec) stays green, including the Fiber adapter modules.
+  jsonv2:
+    runs-on: ubuntu-latest
+    env:
+      GOEXPERIMENT: jsonv2
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: 'stable'
+
+      - name: Test core with GOEXPERIMENT=jsonv2
+        run: go test -race ./...
+
+      - name: Test adapters with GOEXPERIMENT=jsonv2
+        run: |
+          for m in jsonrpcfiber jsonrpcfiberv3; do
+            (cd "$m" && go test -race ./...)
+          done
 
   lint:
     runs-on: ubuntu-latest

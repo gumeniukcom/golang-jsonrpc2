@@ -19,8 +19,78 @@ follows [Semantic Versioning](https://semver.org) for the `/v2` module.
   request, too-large). The `json.RawMessage` returned by
   `HandleRPCJSONRawMessage` must be treated as **read-only** on these paths.
 
+### Internal
+
+- json/v2 migration prep (no behavior change, no new build requirements):
+  all generic reflection-based JSON now routes through one `internal/codec`
+  seam, so adopting `encoding/json/v2` when it stabilizes (≈ Go 1.27) is a
+  one-file change. The default build stays on `encoding/json` (v1) and works
+  on Go 1.25+ with no build flags. CI runs the full suite (core + adapters)
+  under `GOEXPERIMENT=jsonv2`. See MIGRATION.md.
+
 ### Added
 
+- Observability: `SetObserver(ObserveFunc)` installs a hook called once per
+  dispatched request with a `CallInfo` (method, client-facing code, error,
+  duration, notification flag). It runs on the dispatch path — seeing
+  method-not-found, invalid requests, timeouts, and panics that a handler
+  middleware never sees — and fires per entry in a batch, including entries
+  whose JSON did not decode. Frame-level rejects before dispatch (oversized
+  messages/batches, top-level parse errors) are not observed (logged at
+  Debug instead). The hook may be called concurrently across batch workers,
+  `CallInfo.Method` is untrusted client input, and a panicking hook is
+  recovered and logged rather than crashing the server. Zero cost when unset.
+- Client batches: the `jsonrpc.BatchCaller` contract (`CallBatch`) with
+  `Spec` / `BatchResult` and the typed `BatchResultAs[R]` helper, implemented
+  by both `jsonrpchttp.Client` (one POST) and `jsonrpcws.Client` (correlated
+  by id over the shared connection, alongside concurrent single calls).
+  Results align by index with specs; notification specs get a zero slot; an
+  empty batch is a no-op. Batch responses are streamed (not unmarshaled into
+  a slice) so a hostile array frame cannot amplify memory. A batch over the
+  client limit (`WithMaxBatchSize` / `WithClientMaxBatchSize`, default 100)
+  fails locally with `ErrBatchTooLarge`, and an unaddressable top-level error
+  fails the pending calls rather than hanging them.
+- Server push over WebSocket: handlers retrieve a `jsonrpc.Pusher` from the
+  request context (`PusherFromContext`) to send server-initiated
+  notifications, delivered to the client's `WithNotificationHandler`. The
+  `Pusher` contract and `ContextWithPusher`/`PusherFromContext` live in the
+  core package (transport-neutral); plain HTTP reports no pusher so handlers
+  degrade gracefully. Push frames share the connection's serialized,
+  time-bounded writer with responses.
+- Client side: the `jsonrpc.Caller` contract (`Call`/`Notify`) with typed
+  `jsonrpc.CallResult[R]`, implemented by `jsonrpchttp.NewClient`
+  (stateless POST, bounded response body via `WithMaxResponseSize`) and
+  `jsonrpcws.DialClient` (one connection, concurrent calls correlated by
+  id, pending calls fail on close). JSON-RPC error responses surface as
+  `*structs.Error`, which now implements `error`.
+
+### Security
+
+- `structs.Error` decoding no longer reads the `data` member into an `any`
+  through easyjson's recursive, depth-unbounded lexer — a hostile peer
+  could crash a client with a deeply nested `data` (an unrecoverable
+  `fatal error: stack overflow`). `data` is now captured as raw bytes
+  (`json.RawMessage`); on decode `Error.Data` holds a `json.RawMessage` to
+  unmarshal into a concrete type. Excessive nesting is rejected as an
+  ordinary decode error instead of crashing.
+- `jsonrpcws` subpackage — a WebSocket transport (github.com/coder/websocket,
+  the only new dependency — itself dependency-free): one frame per JSON-RPC
+  message, concurrent dispatch with bounded fan-out
+  (`WithMaxConcurrentCalls`), out-of-order responses correlated by id,
+  no frames for notifications, same-origin handshakes by default
+  (`WithOriginPatterns`), read limit with 1009 close
+  (`WithMaxMessageSize`), bounded response writes (`WithWriteTimeout`,
+  10s default — a slow reader closes the connection instead of wedging
+  it), and in-flight call cancellation when the read side ends.
+- Fiber adapters: `jsonrpcfiber` (Fiber v2) and `jsonrpcfiberv3` (Fiber v3),
+  each a separate nested Go module so Fiber and fasthttp stay out of the core
+  `go.mod`. Same semantics as the net/http adapter (415 / 204 / HTTP-200
+  errors), body bounded by Fiber's `BodyLimit`. Compressed bodies are
+  rejected (decompression-bomb guard), the request context is taken from the
+  safe user-context accessor (not the pooled Fiber `Ctx`, which would race
+  under enforced-timeout mode), and Fiber is pinned to patched versions
+  (v2.52.12 / v3.1.0). The nested modules are `go get`-able only after the
+  core `v2.x` tag is published.
 - `jsonrpchttp` subpackage — an `http.Handler` transport: bounded request
   body (1 MiB default, `WithMaxBodySize`), `204 No Content` for
   notifications, `Content-Type` validation, transport failures mapped to

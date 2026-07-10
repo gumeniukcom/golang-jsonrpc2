@@ -30,6 +30,7 @@ type config struct {
 	middlewares        []Middleware
 	defaultTimeOut     time.Duration
 	logger             *slog.Logger
+	observe            ObserveFunc
 	maxBatchSize       int
 	batchConcurrency   int
 	maxMessageSize     int

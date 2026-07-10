@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/internal/codec"
 	"github.com/gumeniukcom/golang-jsonrpc2/v2/structs"
 )
 
@@ -67,7 +69,7 @@ func (j *JSONRPC) HandleRPCJSONRawMessage(ctx context.Context, data json.RawMess
 		parseFailed := make([]bool, len(elems))
 		for i, e := range elems {
 			if err := batchReq[i].UnmarshalJSON(e); err != nil {
-				if !json.Valid(e) {
+				if !codec.Valid(e) {
 					// A syntactically broken element means the whole payload
 					// is invalid JSON: a single ParseError response.
 					return errorParse()
@@ -277,25 +279,62 @@ func (j *JSONRPC) HandleRPC(ctx context.Context, data *structs.Request) *structs
 // response — inline it is already computed, and in enforced mode the caller
 // has stopped listening anyway, so the abort is reported distinctly.
 func (j *JSONRPC) handleRPC(ctx context.Context, cfg *config, data *structs.Request) *structs.Response {
+	var start time.Time
+	if cfg.observe != nil {
+		start = time.Now()
+	}
+
+	resp := j.handleValidated(ctx, cfg, data)
+
+	j.observe(ctx, cfg, resp, data.Method, len(data.ID) == 0, start)
+
+	if len(data.ID) == 0 {
+		// Notification: MUST NOT reply. The handler still ran and was
+		// observed above; handler/timeout errors were logged by errorResponse.
+		return nil
+	}
+	return resp
+}
+
+// observe reports one request's outcome to the configured observer. It is a
+// no-op without an observer, and it recovers a panicking observer (logging
+// it) so a buggy monitoring hook can never crash the server — especially a
+// batch worker goroutine, where an unrecovered panic would take down the
+// process.
+func (j *JSONRPC) observe(ctx context.Context, cfg *config, resp *structs.Response, method string, notification bool, start time.Time) {
+	if cfg.observe == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil && cfg.logger != nil {
+			cfg.logger.ErrorContext(ctx, "jsonrpc: observer panicked", slog.Any("panic", r))
+		}
+	}()
+	code, cerr := observeOutcome(resp)
+	cfg.observe(ctx, CallInfo{
+		Method:       method,
+		Code:         code,
+		Err:          cerr,
+		Duration:     time.Since(start),
+		Notification: notification,
+	})
+}
+
+// handleValidated validates and dispatches a request, returning the response
+// that would be sent (before notification suppression).
+func (j *JSONRPC) handleValidated(ctx context.Context, cfg *config, data *structs.Request) *structs.Response {
 	// Only a syntactically valid request without an id member is a
 	// notification; a request that fails validation is answered with an
 	// id:null error even when it carries no id (spec §5 examples).
 	if err := validateRequest(data); err != nil {
 		id := data.ID
-		if len(id) > 0 && !json.Valid(id) {
+		if len(id) > 0 && !codec.Valid(id) {
 			// Never echo a broken id back — it would corrupt the response.
 			id = nil
 		}
 		return j.errorResponse(ctx, cfg, err, InvalidRequestErrorCode, id)
 	}
-
-	resp := j.dispatch(ctx, cfg, data)
-	if len(data.ID) == 0 {
-		// Notification: MUST NOT reply. Handler/timeout errors were already
-		// logged by errorResponse.
-		return nil
-	}
-	return resp
+	return j.dispatch(ctx, cfg, data)
 }
 
 // dispatch runs one validated request under the configured timeout regime.
@@ -379,8 +418,17 @@ func (j *JSONRPC) handleBatchRPC(ctx context.Context, cfg *config, data structs.
 			defer wg.Done()
 			for idx := range indexes {
 				if parseFailed != nil && parseFailed[idx] {
-					raw[idx] = j.errorResponse(ctx, cfg,
+					var start time.Time
+					if cfg.observe != nil {
+						start = time.Now()
+					}
+					resp := j.errorResponse(ctx, cfg,
 						errors.New("batch entry is not a valid request object"), InvalidRequestErrorCode, nil)
+					// Observe the undecodable entry too, so the documented
+					// "fires per entry" holds (Method unknown, not a
+					// notification — it gets an id:null error response).
+					j.observe(ctx, cfg, resp, "", false, start)
+					raw[idx] = resp
 					continue
 				}
 				raw[idx] = j.handleRPC(ctx, cfg, &data[idx])
@@ -420,7 +468,7 @@ func validateRequest(data *structs.Request) error {
 	if len(data.ID) > 0 {
 		switch data.ID[0] {
 		case '"', '-', 'n', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			if !json.Valid(data.ID) {
+			if !codec.Valid(data.ID) {
 				return errors.New("id is not a valid JSON value")
 			}
 		default:
