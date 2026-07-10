@@ -3,18 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"time"
 
 	jrpc "github.com/gumeniukcom/golang-jsonrpc2/v2"
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/jsonrpchttp"
 )
-
-// maxBodySize caps how much of a request body is read into memory; oversized
-// bodies fail in io.ReadAll instead of reaching the dispatcher.
-const maxBodySize = 1 << 20 // 1 MiB
 
 func main() {
 	serv := jrpc.New()
@@ -24,26 +18,9 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
-		defer func() { _ = r.Body.Close() }()
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			var maxErr *http.MaxBytesError
-			if errors.As(err, &maxErr) {
-				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
-			} else {
-				http.Error(w, "cannot read request body", http.StatusBadRequest)
-			}
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if _, err = w.Write(serv.HandleRPCJSONRawMessage(r.Context(), body)); err != nil {
-			return
-		}
-	})
+	// jsonrpchttp.Handler bounds the body (1 MiB default), answers
+	// notifications with 204, and maps transport failures to HTTP codes.
+	mux.Handle("/", jsonrpchttp.Handler(serv))
 
 	srv := &http.Server{
 		Addr:              ":8088",
@@ -67,20 +44,12 @@ type outcome struct {
 }
 
 func sum(_ context.Context, data json.RawMessage) (json.RawMessage, int, error) {
-	if data == nil {
-		return nil, jrpc.InvalidRequestErrorCode, fmt.Errorf("empty request")
-	}
 	inc := &income{}
-	err := json.Unmarshal(data, inc)
-	if err != nil {
-		return nil, jrpc.InvalidRequestErrorCode, err
+	if err := json.Unmarshal(data, inc); err != nil {
+		return nil, jrpc.InvalidParamsErrorCode, err
 	}
 
-	C := outcome{
-		Sum: inc.A + inc.B,
-	}
-
-	mdata, err := json.Marshal(C)
+	mdata, err := json.Marshal(outcome{Sum: inc.A + inc.B})
 	if err != nil {
 		return nil, jrpc.InternalErrorCode, err
 	}
