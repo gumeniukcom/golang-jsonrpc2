@@ -3,6 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/gumeniukcom/golang-jsonrpc2/v2.svg)](https://pkg.go.dev/github.com/gumeniukcom/golang-jsonrpc2/v2)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gumeniukcom/golang-jsonrpc2/v2)](https://goreportcard.com/report/github.com/gumeniukcom/golang-jsonrpc2/v2)
 [![CI](https://github.com/gumeniukcom/golang-jsonrpc2/actions/workflows/ci.yml/badge.svg)](https://github.com/gumeniukcom/golang-jsonrpc2/actions/workflows/ci.yml)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13570/badge)](https://www.bestpractices.dev/projects/13570)
 [![Release](https://img.shields.io/github/v/release/gumeniukcom/golang-jsonrpc2)](https://github.com/gumeniukcom/golang-jsonrpc2/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
