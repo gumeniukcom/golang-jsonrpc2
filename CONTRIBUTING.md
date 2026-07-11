@@ -50,4 +50,4 @@ before touching it.
 ## Conduct
 
 Be kind and constructive. Reports of unacceptable behavior go to the
-maintainer via the contact on the GitHub profile.
+maintainer at <i@gumeniuk.com>.
