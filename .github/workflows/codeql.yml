@@ -38,10 +38,18 @@ jobs:
         uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
         with:
           languages: go
-          # 'none' extracts source across every nested module (adapters,
-          # benchmarks) without building — autobuild would trip over the
-          # Makefile and cover only the root module.
-          build-mode: none
+          # manual: CodeQL 2.26 rejects 'none' for Go, and autobuild would
+          # trip over the Makefile (its default target needs easyjson and
+          # golangci-lint) and cover only the root module. Tracing explicit
+          # builds covers every nested module deterministically.
+          build-mode: manual
+
+      - name: Build all modules (traced by CodeQL)
+        run: |
+          go build ./...
+          (cd jsonrpcfiber && go build ./...)
+          (cd jsonrpcfiberv3 && go build ./...)
+          (cd benchmarks && go build ./...)
 
       - name: Analyze
         uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
