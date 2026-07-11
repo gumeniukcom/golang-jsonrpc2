@@ -11,6 +11,16 @@ updates:
       interval: weekly
       day: monday
   - package-ecosystem: gomod
+    directory: /jsonrpcfiber
+    schedule:
+      interval: weekly
+      day: monday
+  - package-ecosystem: gomod
+    directory: /jsonrpcfiberv3
+    schedule:
+      interval: weekly
+      day: monday
+  - package-ecosystem: gomod
     directory: /benchmarks
     schedule:
       interval: monthly

@@ -1,0 +1,49 @@
+# Static analysis (SAST) via CodeQL: runs on pushes and PRs to master and on
+# a weekly schedule. Complements golangci-lint (style/bugs) with security
+# queries; findings land in the repo's Security > Code scanning tab.
+name: CodeQL
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: '41 5 * * 1' # weekly, Monday 05:41 UTC
+
+# Cancel superseded PR runs (CodeQL is the heaviest workflow here); pushes
+# and scheduled runs finish their SARIF upload uncancelled.
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload SARIF results to code scanning
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: 'stable'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          languages: go
+          # 'none' extracts source across every nested module (adapters,
+          # benchmarks) without building — autobuild would trip over the
+          # Makefile and cover only the root module.
+          build-mode: none
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          category: '/language:go'
