@@ -28,8 +28,10 @@
 //	})
 //
 // RegisterTyped also records parameter/result types and optional metadata
-// (WithSummary, WithTags, WithErrors, WithExample, WithTimeout, ...) that
-// the openrpc subpackage renders into an OpenRPC service description.
+// (WithSummary, WithTags, WithErrors, WithExample, WithTimeout, WithPublic,
+// ...) that the openrpc subpackage renders into an OpenRPC service
+// description; WithPublic opts the method into rpc.discover service
+// discovery, which is default-deny.
 //
 // # Spec conformance and safety defaults
 //

@@ -10,6 +10,8 @@ import "github.com/gumeniukcom/golang-jsonrpc2/v2/openrpc"
 
 // openrpc.Public keeps only methods opted in with jrpc.WithPublic();
 // pass serv.Methods() verbatim only for a trusted internal audience.
+// Built once here — do it after all registrations (or rebuild per request;
+// the in-band rpc.discover flow below is always per-call fresh).
 doc, _ := openrpc.Document(openrpc.Info{Title: "My API", Version: "1.0.0"}, openrpc.Public(serv.Methods()))
 mux.HandleFunc("/openrpc.json", func(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -32,8 +34,9 @@ err := jrpc.RegisterTyped(serv, "sum", sumHandler,
 )
 ```
 
-`Methods()` returns a name-sorted snapshot whose slices and `Extra` map are
-copied, so you may filter and reorder freely before generating. A method
+`Methods()` returns a name-sorted snapshot whose slices and metadata maps
+(`Extra`, `PublishedExtra`) are copied, so you may filter and reorder freely
+before generating. A method
 registered through the untyped `RegisterMethod` appears with nil
 `Params`/`Result` (name-only); a typed method with `struct{}` params keeps
 that non-nil zero-field type, so a generator can distinguish "no parameters"

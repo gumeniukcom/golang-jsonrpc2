@@ -55,8 +55,19 @@ err := jrpc.RegisterTyped(serv, "sum", sumHandler,
 	jrpc.WithTags("math", "public"),
 	jrpc.WithExample("basic", sumParams{A: 3, B: 5}, sumResult{Sum: 8}),
 	jrpc.WithTimeout(10*time.Second), // per-method override, see production.md
+	jrpc.WithPublic(),                // opt into rpc.discover (default-deny)
 )
 ```
+
+Two metadata rules worth knowing before you generate documentation:
+
+- **Discovery is opt-in.** Without `WithPublic()` a method never appears in
+  `rpc.discover` or the `openrpc.Public` subset — a forgotten annotation
+  hides instead of leaking.
+- **`WithExtra` is private, `WithPublishedExtra` is published.** Keep
+  authorization markup and generator hints in the former (never rendered
+  into documents); use the latter for values consumers should see as
+  `x-extra`.
 
 Options are additive and backward-compatible; `Methods()` returns a
 name-sorted, defensively-copied snapshot.
