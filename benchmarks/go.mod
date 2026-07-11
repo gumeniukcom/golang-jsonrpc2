@@ -12,7 +12,7 @@ replace github.com/gumeniukcom/golang-jsonrpc2/v2 => ../
 
 require (
 	github.com/creachadair/jrpc2 v1.3.5
-	github.com/gumeniukcom/golang-jsonrpc2/v2 v2.6.0
+	github.com/gumeniukcom/golang-jsonrpc2/v2 v2.6.1
 	github.com/sourcegraph/jsonrpc2 v0.2.1
 )
 
