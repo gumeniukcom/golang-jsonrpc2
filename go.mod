@@ -1,6 +1,6 @@
 module github.com/gumeniukcom/golang-jsonrpc2/v2
 
-go 1.25
+go 1.23.0
 
 toolchain go1.25.12
 

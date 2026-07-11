@@ -127,7 +127,7 @@ API reference: [pkg.go.dev](https://pkg.go.dev/github.com/gumeniukcom/golang-jso
 ## Versioning
 
 The module path is `github.com/gumeniukcom/golang-jsonrpc2/v2` (SemVer,
-[Keep a Changelog](CHANGELOG.md)). Go 1.25+. Migrating from v1 or from
+[Keep a Changelog](CHANGELOG.md)). Go 1.23+. Migrating from v1 or from
 another JSON-RPC library: [docs/migrating.md](docs/migrating.md).
 
 ## License

@@ -63,8 +63,6 @@ Honesty first — pick the competitor when these matter to you:
   carries three (easyjson, uuid, coder/websocket — and easyjson's
   maintenance has slowed, which is why an `encoding/json/v2` migration
   path is prepared; see `docs/dev/json-v2-plan.md`).
-- **Go version floor.** We require Go 1.25+ (generics-era APIs, toolchain
-  pinning); the alternatives build on much older toolchains.
 - **Production mileage.** sourcegraph/jsonrpc2 has years of use inside
   editors and language servers; this library's v2 API is younger.
 

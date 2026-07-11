@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 follows [Semantic Versioning](https://semver.org) for the `/v2` module.
 
+## [Unreleased]
+
+### Changed
+
+- Minimum Go version lowered from 1.25 to **1.23** — the 1.25 floor was an
+  artifact of toolchain pinning, not an API need; the full suite passes on
+  Go 1.23 (now part of the CI matrix). Development toolchain stays pinned
+  via the `toolchain` directive, which does not constrain consumers.
+
 ## [2.6.0]
 
 ### Changed — behavior of the day-old v2.5.0 discovery (deliberate, act now)
