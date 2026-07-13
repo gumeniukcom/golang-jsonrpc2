@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 follows [Semantic Versioning](https://semver.org) for the `/v2` module.
 
+## [2.7.0]
+
+### Changed
+
+- **`RegisterError` now accepts codes in the spec-reserved range
+  -32768..-32000** (previously rejected). The JSON-RPC 2.0 spec explicitly
+  sets aside -32099..-32000 for implementation-defined server errors, and
+  widely deployed dialects define codes deeper in the range (LSP uses
+  -32800..-32899); the blanket ban made faithful migrations impossible.
+  Registering in the reserved range logs a warning. The dispatcher's own
+  pre-defined codes (-32700, -32600..-32605) remain non-registrable via the
+  existing duplicate check, so protocol responses cannot be redefined.
+
 ## [2.6.1]
 
 ### Changed

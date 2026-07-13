@@ -15,15 +15,21 @@ import (
 type ErrorMessages map[int]string
 
 // RegisterError registers a custom error code and message.
-// Codes in the range -32768..-32000 are reserved by the JSON-RPC spec.
-// See http://xmlrpc-epi.sourceforge.net/specs/rfc.fault_codes.php
+//
+// The JSON-RPC 2.0 spec reserves -32768..-32000 for protocol errors, but it
+// explicitly sets aside -32099..-32000 for implementation-defined server
+// errors, and widely deployed dialects define codes deeper in the reserved
+// range (LSP uses -32800..-32899). Registration in the reserved range is
+// therefore allowed and logged at Warn; only codes the dispatcher itself
+// pre-defines (-32700, -32600..-32605) are rejected, via the duplicate check.
 func (j *JSONRPC) RegisterError(code int, msg string) error {
 	return j.updateConfig(func(c *config) error {
 		if _, ok := c.errors[code]; ok {
 			return fmt.Errorf("error with code %d already exists", code)
 		}
-		if code >= -32768 && code <= -32000 {
-			return fmt.Errorf("error with code %d: range -32768..-32000 reserved", code)
+		if code >= -32768 && code <= -32000 && c.logger != nil {
+			c.logger.Warn("jsonrpc: registering error code in the spec-reserved range -32768..-32000",
+				slog.Int("code", code))
 		}
 		c.errors[code] = msg
 		return nil
