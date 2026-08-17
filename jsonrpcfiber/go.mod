@@ -5,7 +5,7 @@ go 1.25.0
 toolchain go1.25.12
 
 require (
-	github.com/gofiber/fiber/v2 v2.52.14
+	github.com/gofiber/fiber/v2 v2.52.15
 	github.com/gumeniukcom/golang-jsonrpc2/v2 v2.7.0
 )
 
