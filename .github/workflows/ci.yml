@@ -13,11 +13,13 @@ permissions:
   contents: read
 
 jobs:
+  # The module floor is Go 1.26, which is also the oldest release Go still
+  # supports, so the matrix is exactly the supported set: floor and current.
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.25', '1.24', '1.23']
+        go-version: ['1.27', '1.26']
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -55,23 +57,22 @@ jobs:
         working-directory: ${{ matrix.module }}
         run: go test -race ./...
 
-      - name: Lint ${{ matrix.module }}
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
-        with:
-          version: v2.10.1
-          working-directory: ${{ matrix.module }}
-
       - name: govulncheck ${{ matrix.module }}
         working-directory: ${{ matrix.module }}
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
-  # encoding/json/v2 lands as the default in a future Go release; run the
-  # suite under the experiment now so the migration path (see docs/dev/json-v2-plan.md and
-  # internal/codec) stays green, including the Fiber adapter modules.
-  jsonv2:
+  # Go 1.27 made the json/v2-backed encoding/json the default, so the old
+  # GOEXPERIMENT=jsonv2 job stopped testing anything the plain matrix does
+  # not already cover. The mode that now lacks coverage is the opt-out:
+  # a consumer who hits a compatibility problem reaches for
+  # GOEXPERIMENT=nojsonv2, and that build has to stay green and stay
+  # behaviourally equivalent (this library guarantees semantic, not
+  # byte-for-byte, output — see doc.go). Go documents the opt-out as
+  # temporary; delete this job once the toolchain drops the flag.
+  nojsonv2:
     runs-on: ubuntu-latest
     env:
-      GOEXPERIMENT: jsonv2
+      GOEXPERIMENT: nojsonv2
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -80,10 +81,10 @@ jobs:
         with:
           go-version: 'stable'
 
-      - name: Test core with GOEXPERIMENT=jsonv2
+      - name: Test core with GOEXPERIMENT=nojsonv2
         run: go test -race ./...
 
-      - name: Test adapters with GOEXPERIMENT=jsonv2
+      - name: Test adapters with GOEXPERIMENT=nojsonv2
         run: |
           for m in jsonrpcfiber jsonrpcfiberv3; do
             (cd "$m" && go test -race ./...)
@@ -110,20 +111,36 @@ jobs:
           go build ./...
           go vet ./...
 
+  # Lints every module, including the adapters (their lint step used to live
+  # in the adapters job, which runs on 'stable' — that broke the moment Go
+  # 1.27 became stable).
+  #
+  # Go is pinned to 1.26 here on purpose: golangci-lint v2.10.1 is built with
+  # Go 1.26 and cannot type-check a tree compiled by the 1.27 toolchain — it
+  # fails inside the 1.27 stdlib itself, not on our code. 1.26 is the oldest
+  # currently supported release, so this stays on supported Go. Move back to
+  # 'stable' once the pinned golangci-lint is built with Go 1.27 or later.
+  # The go.mod `toolchain` directive is held at go1.26.7 for the same reason:
+  # a go1.27.0 directive would force this job onto 1.27 whatever setup-go
+  # installs.
   lint:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: ['.', jsonrpcfiber, jsonrpcfiberv3]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.25'
+          go-version: '1.26'
 
-      - name: golangci-lint
+      - name: golangci-lint (${{ matrix.module }})
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: v2.10.1
+          working-directory: ${{ matrix.module }}
 
   vuln:
     runs-on: ubuntu-latest

@@ -1,8 +1,8 @@
 module github.com/gumeniukcom/golang-jsonrpc2/jsonrpcfiberv3
 
-go 1.25.0
+go 1.26.0
 
-toolchain go1.25.12
+toolchain go1.26.7
 
 require (
 	github.com/gofiber/fiber/v3 v3.4.0
