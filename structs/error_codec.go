@@ -6,6 +6,8 @@ import (
 	"github.com/mailru/easyjson"
 	"github.com/mailru/easyjson/jlexer"
 	"github.com/mailru/easyjson/jwriter"
+
+	"github.com/gumeniukcom/golang-jsonrpc2/v2/internal/codec"
 )
 
 // UnmarshalEasyJSON decodes an Error. Unlike generated code it captures the
@@ -69,8 +71,12 @@ func (v *Error) UnmarshalJSON(data []byte) error {
 
 // MarshalEasyJSON encodes an Error. Data of any type is written through the
 // same easyjson/json.Marshaler fast paths the generator used, falling back
-// to encoding/json — so a json.RawMessage Data (as produced on decode)
-// round-trips verbatim.
+// to internal/codec — so a json.RawMessage Data (as produced on decode)
+// round-trips verbatim. The fallback deliberately goes through the codec
+// seam rather than calling encoding/json directly: Error.Data is the one
+// arbitrary, application-supplied value this package serializes by
+// reflection, and routing it here keeps every generic marshal in the
+// library on one implementation (see docs/dev/json-v2-plan.md).
 func (v Error) MarshalEasyJSON(w *jwriter.Writer) {
 	w.RawString(`{"code":`)
 	w.Int(v.Code)
@@ -84,7 +90,7 @@ func (v Error) MarshalEasyJSON(w *jwriter.Writer) {
 		case json.Marshaler:
 			w.Raw(m.MarshalJSON())
 		default:
-			w.Raw(json.Marshal(v.Data))
+			w.Raw(codec.Marshal(v.Data))
 		}
 	}
 	w.RawByte('}')

@@ -44,6 +44,18 @@
 // in handlers are recovered, and error text never leaks to clients unless
 // opted in via RPCError.WithData.
 //
+// # JSON encoding compatibility
+//
+// The library guarantees semantic equivalence of its JSON output across Go
+// toolchains and GOEXPERIMENT settings — not byte-for-byte equality. Go 1.27
+// reimplemented encoding/json on top of encoding/json/v2: behavior is
+// preserved, but some encodings differ (invalid UTF-8 marshals as raw U+FFFD
+// where the previous implementation emitted an escape) and the text of stdlib
+// decode errors changed. Match client-side decode failures with errors.Is or
+// errors.As rather than on message text, and do not depend on exact response
+// bytes. Error text is never placed on the wire regardless: only registered
+// messages and an explicit RPCError.WithData payload reach a peer.
+//
 // Middleware (Use), interceptors, per-method timeouts, an observability
 // hook (SetObserver), and client helpers (Caller, CallResult, BatchCaller)
 // round out the surface — see the guides under docs/ in the repository for
