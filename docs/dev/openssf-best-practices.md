@@ -81,7 +81,7 @@ Legend: **Met** / **N/A** with the justification text to paste.
 | test | Met | Comprehensive `go test` suite incl. a JSON-RPC 2.0 spec-conformance file (spec_test.go), fuzz targets, and race-enabled runs. |
 | test_invocation | Met | `make test` / `go test ./...`; documented in CONTRIBUTING.md. |
 | test_most | Met | Core dispatcher coverage is tracked in CI (>90%); transports have end-to-end suites. |
-| test_continuous_integration | Met | GitHub Actions on every push/PR: test matrix (two Go versions), -race, lint, govulncheck, CodeQL, nested modules. https://github.com/gumeniukcom/golang-jsonrpc2/actions |
+| test_continuous_integration | Met | GitHub Actions on every push/PR: test matrix (both supported Go releases: the 1.26 floor and current), -race, lint, govulncheck, CodeQL, nested modules. https://github.com/gumeniukcom/golang-jsonrpc2/actions |
 | test_policy | Met | CONTRIBUTING.md "Requirements for changes" #1: new functionality must add tests; bug fixes must add a regression test. |
 | tests_are_added | Met | Recent history demonstrates it — e.g. the v2.6.0 visibility change shipped with default-deny, filter, and deep-copy tests. |
 | tests_documented_added | Met | Stated in CONTRIBUTING.md. |

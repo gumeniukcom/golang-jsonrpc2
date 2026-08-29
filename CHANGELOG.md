@@ -4,6 +4,91 @@ All notable changes to this project are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 follows [Semantic Versioning](https://semver.org) for the `/v2` module.
 
+## [2.8.0]
+
+### Breaking (Go version)
+
+- **Minimum Go version raised from 1.23 to 1.26** — core module and both Fiber
+  adapters (`jsonrpcfiber`, `jsonrpcfiberv3`, which also move up from 1.25).
+  The floor now tracks Go's supported set: 1.26 is the oldest release Go still
+  patches. Consumers on Go 1.23–1.25 must upgrade their toolchain or stay on
+  v2.7.x; those releases no longer receive Go security fixes. This reverses
+  the direction of 2.6.1, which had lowered the floor to 1.23 for reach.
+
+  **This is not a performance change**, and the two should not be conflated.
+  Go 1.27's faster JSON is selected by a build tag (`goexperiment.jsonv2`),
+  not by the `go` directive, so it applied at the old floor already (see
+  *Performance* below). Nor does a 1.26 floor enable the `encoding/json/v2`
+  import — that needs 1.27; see `docs/dev/json-v2-plan.md`.
+
+### Changed
+
+- **The CI test matrix is now `1.27/1.26`** — exactly the supported set, 1.26
+  being both the new floor and the oldest supported release. It was
+  `1.25/1.24/1.23`, which covered neither currently supported release, and Go
+  1.25 reached end of life when 1.27 shipped (2026-08-19).
+- **The `GOEXPERIMENT=jsonv2` CI job is now a `GOEXPERIMENT=nojsonv2` job.**
+  Go 1.27 made the json/v2-backed `encoding/json` the default, so the old job
+  stopped testing anything the ordinary matrix does not already cover. The
+  mode that lacked coverage is the *opt-out* — what a consumer reaches for on
+  a compatibility problem — so that is what is under test now. It goes away
+  when Go removes the flag.
+- **Fixed a lint job that has been broken since Go 1.27 became `stable`
+  (2026-08-19).** golangci-lint v2.10.1 is built with Go 1.26 and cannot
+  type-check a tree compiled by the 1.27 toolchain — it fails inside the 1.27
+  standard library itself. Linting for all three modules now lives in one
+  matrixed `lint` job pinned to Go 1.26 (the oldest supported release); the
+  `adapters` job keeps `stable`, so adapter *tests* still run on 1.27. The
+  pin comes out once a golangci-lint built with Go 1.27 is available.
+- Development `toolchain` directive bumped from `go1.25.12` (EOL) to
+  `go1.26.7` in the core and both Fiber adapter modules. As in 2.6.1 this
+  concerns the development toolchain only and does not constrain consumers.
+  It is deliberately **not** `go1.27.0`: the directive is a floor, so a 1.27
+  value would force every job — including lint — onto 1.27 regardless of what
+  `setup-go` installs. Developers on 1.27 still build with 1.27.
+- `Error.Data` values that implement neither `easyjson.Marshaler` nor
+  `json.Marshaler` now serialize through the `internal/codec` seam instead of
+  calling `encoding/json` directly (`structs/error_codec.go`). That was the
+  last generic marshal outside the seam. No behavior change.
+
+### Documentation
+
+- `doc.go` states the JSON encoding compatibility promise explicitly:
+  **semantic** equivalence of output across Go toolchains and `GOEXPERIMENT`
+  settings, not byte-for-byte equality. Go 1.27 changed one observable
+  encoding (invalid UTF-8 marshals as raw U+FFFD where the previous
+  implementation emitted an escape) and changed the text of stdlib decode
+  errors. Neither reaches the wire — only registered messages and an explicit
+  `RPCError.WithData` payload do — but client-side decode failures should be
+  matched with `errors.Is`/`errors.As`, never on message text.
+- `docs/dev/json-v2-plan.md` rewritten against the shipped Go 1.27 API. The
+  previous revision was written against a pre-release API and named a symbol
+  that does not exist (`jsonv2.RejectDuplicateNames`; the real one is
+  `jsontext.AllowDuplicateNames(false)`). It also presented the codec flip as
+  a drop-in and easyjson retirement as a performance win; both are corrected
+  and now carry measurements, along with the reason strict decoding cannot
+  close the envelope parser differential until easyjson is retired.
+- `docs/BENCHMARKS.md` re-measured on Go 1.27.0 (`-count=15`), and several
+  claims corrected — in both directions. Recompiling alone moved this library
+  −16.9% time / −23.4% bytes / −16.2% allocations on the pipe arena, but
+  reflection-heavy code gained more, so gaps narrowed: we are now **level with
+  `net/rpc` on small end-to-end calls** (it was ~23% ahead) and **behind it on
+  large payloads** (it was a tie), and message-level dispatch is now at parity
+  with the hand-rolled baseline rather than below it. Against the two JSON-RPC
+  2.0 alternatives the lead is 1.7–2.1× (was quoted as ~2×). `README.md` and
+  `docs/COMPARISON.md` updated to match.
+
+### Performance
+
+- **Building on Go 1.27 speeds this library up with no code change.** Go 1.27
+  reimplemented `encoding/json` on top of `encoding/json/v2`; because the
+  switch is a build tag rather than a `go`-directive gate, the gain applies
+  whatever the module's floor is. Measured on the in-repo suite (Apple M3,
+  `-count=10`, benchstat): **−17.1% bytes, −12.3% allocations** geomean, and
+  **−39.9% time** on 10 KB params. No library change was needed or made to
+  obtain it — it is recorded here so the floor bump above is not mistaken for
+  its cause.
+
 ## [2.7.0]
 
 ### Changed

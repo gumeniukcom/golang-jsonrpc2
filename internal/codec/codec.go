@@ -1,16 +1,23 @@
 // Package codec is the single seam through which the library performs generic,
 // reflection-based JSON (de)serialization — method params and results, client
-// payloads, and structural validation. Consolidating these calls here makes
-// the eventual migration to encoding/json/v2 a one-file change instead of
-// touching every call site.
+// payloads, arbitrary Error.Data values, and structural validation.
+// Consolidating these calls here keeps a migration to encoding/json/v2 a
+// one-file change instead of one that touches every call site.
 //
-// encoding/json/v2 (and encoding/json/jsontext) is available in Go 1.25/1.26
-// only under GOEXPERIMENT=jsonv2 and is targeted to become the default,
-// importable-without-a-flag package in a later Go release. Until then this
-// package delegates to encoding/json (v1), so the default build is unchanged
-// and compiles on Go 1.25+ with no build flags. When json/v2 is stable, swap
-// the bodies here (optionally opting into stricter behavior such as
-// RejectDuplicateNames) — see docs/dev/json-v2-plan.md.
+// Go 1.27 reimplemented encoding/json on top of encoding/json/v2, so builds on
+// Go 1.27+ already get v2's faster unmarshal through the calls below — with no
+// source change here and no go.mod floor bump, because the switch is a build
+// tag (goexperiment.jsonv2) rather than a language-version gate. This package
+// therefore stays on the v1 API: importing encoding/json/v2 directly would
+// require a floor of Go 1.27, and the module's declared floor is Go 1.26.
+//
+// Switching these bodies to encoding/json/v2 is NOT a drop-in change. v2's
+// defaults differ from v1 in ways that are silent and wire-visible: a
+// case-mismatched member decodes to the zero value with no error, duplicate
+// members become an error, and nil slices and maps marshal as [] and {}
+// instead of null. Any flip must pass json.DefaultOptionsV1() to stay
+// bug-for-bug compatible; adopting the stricter defaults is a breaking change
+// that belongs in a major version. See docs/dev/json-v2-plan.md.
 //
 // It does not cover the easyjson-generated struct codecs (Request, Response,
 // Error, ID) or the two streaming batch-array decoders in the transport

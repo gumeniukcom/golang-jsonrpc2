@@ -4,7 +4,7 @@
 // internal/ package, so nothing here is importable.
 module github.com/gumeniukcom/golang-jsonrpc2/benchmarks
 
-go 1.25.0
+go 1.26.0
 
 // In-repo builds run against the working tree; consumers of this repo never
 // build this module.
