@@ -59,7 +59,10 @@ jobs:
 
       - name: govulncheck ${{ matrix.module }}
         working-directory: ${{ matrix.module }}
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        # pinned for reproducibility; bump deliberately. v1.1.4 (built with
+        # Go 1.23) cannot load a go1.26 module — keep the pin at or above the
+        # module floor's Go release.
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   # Go 1.27 made the json/v2-backed encoding/json the default, so the old
   # GOEXPERIMENT=jsonv2 job stopped testing anything the plain matrix does
@@ -112,17 +115,13 @@ jobs:
           go vet ./...
 
   # Lints every module, including the adapters (their lint step used to live
-  # in the adapters job, which runs on 'stable' — that broke the moment Go
-  # 1.27 became stable).
-  #
-  # Go is pinned to 1.26 here on purpose: golangci-lint v2.10.1 is built with
-  # Go 1.26 and cannot type-check a tree compiled by the 1.27 toolchain — it
-  # fails inside the 1.27 stdlib itself, not on our code. 1.26 is the oldest
-  # currently supported release, so this stays on supported Go. Move back to
-  # 'stable' once the pinned golangci-lint is built with Go 1.27 or later.
-  # The go.mod `toolchain` directive is held at go1.26.7 for the same reason:
-  # a go1.27.0 directive would force this job onto 1.27 whatever setup-go
-  # installs.
+  # in the adapters job, whose 'stable' Go broke lint the moment Go 1.27 became
+  # stable: the then-pinned golangci-lint v2.10.1 was built with Go 1.26 and
+  # cannot type-check a 1.27 tree — it panicked inside the 1.27 stdlib itself,
+  # not on our code. v2.13.0 shipped go1.27 support on the day Go 1.27 did, so
+  # the lint job runs 'stable' again on a v2.15.0 binary (built with go1.27.0).
+  # If golangci-lint ever lags a Go release again, this is the seam: pin
+  # setup-go to the release the linter is built with, not 'stable'.
   lint:
     runs-on: ubuntu-latest
     strategy:
@@ -134,12 +133,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26'
+          go-version: 'stable'
 
       - name: golangci-lint (${{ matrix.module }})
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
-          version: v2.10.1
+          version: v2.15.0
           working-directory: ${{ matrix.module }}
 
   vuln:
@@ -153,8 +152,9 @@ jobs:
           go-version: 'stable'
 
       - name: govulncheck
-        # pinned for reproducibility; bump deliberately
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        # pinned for reproducibility; bump deliberately. Same rule as the
+        # adapters job: the pin has to track the module floor's Go release.
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   bench:
     # Informational perf-regression check: compares PR benchmarks against the

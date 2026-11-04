@@ -201,8 +201,8 @@ func TestWSClientCallBatchServerRejectDoesNotHang(t *testing.T) {
 	}()
 
 	select {
-	case <-done:
-		// returned (error or slots) — the point is it did not hang
+	case err := <-done:
+		_ = err // returned (error or slots) — the point is it did not hang
 	case <-time.After(3 * time.Second):
 		t.Fatal("CallBatch hung on a server-rejected oversized batch")
 	}

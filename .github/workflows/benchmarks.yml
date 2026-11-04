@@ -38,7 +38,7 @@ jobs:
         working-directory: benchmarks
         continue-on-error: true
         # pinned for reproducibility; bump deliberately (same pin as ci.yml)
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
       - name: Run comparison suite
         working-directory: benchmarks

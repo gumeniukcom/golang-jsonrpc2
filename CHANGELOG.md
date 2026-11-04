@@ -34,18 +34,25 @@ follows [Semantic Versioning](https://semver.org) for the `/v2` module.
   a compatibility problem — so that is what is under test now. It goes away
   when Go removes the flag.
 - **Fixed a lint job that has been broken since Go 1.27 became `stable`
-  (2026-08-19).** golangci-lint v2.10.1 is built with Go 1.26 and cannot
-  type-check a tree compiled by the 1.27 toolchain — it fails inside the 1.27
-  standard library itself. Linting for all three modules now lives in one
-  matrixed `lint` job pinned to Go 1.26 (the oldest supported release); the
-  `adapters` job keeps `stable`, so adapter *tests* still run on 1.27. The
-  pin comes out once a golangci-lint built with Go 1.27 is available.
+  (2026-08-19).** The then-pinned golangci-lint v2.10.1 is built with Go 1.26
+  and cannot type-check a tree compiled by the 1.27 toolchain — it fails
+  inside the 1.27 standard library itself. golangci-lint v2.13.0 shipped
+  go1.27 support the day Go 1.27 did, so linting for all three modules now
+  lives in one matrixed `lint` job running v2.15.0 (built with go1.27.0) on
+  `stable`. The upgrade also surfaced one missed error check in the
+  `jsonrpcws` tests (an error received from a channel and discarded), now
+  fixed.
+- **CI `govulncheck` pin raised from v1.1.4 to v1.9.0** in the `vuln` job and
+  the per-adapter scan. v1.1.4 is built with Go 1.23 and can no longer load a
+  module whose floor is 1.26 ("package requires newer Go version go1.26"), so
+  the job has been red since the floor move. The pin now has a rule attached:
+  keep it at or above the Go release the module floor names.
 - Development `toolchain` directive bumped from `go1.25.12` (EOL) to
   `go1.26.7` in the core and both Fiber adapter modules. As in 2.6.1 this
   concerns the development toolchain only and does not constrain consumers.
   It is deliberately **not** `go1.27.0`: the directive is a floor, so a 1.27
-  value would force every job — including lint — onto 1.27 regardless of what
-  `setup-go` installs. Developers on 1.27 still build with 1.27.
+  value would force every job onto 1.27 regardless of what `setup-go`
+  installs. Developers on 1.27 still build with 1.27.
 - `Error.Data` values that implement neither `easyjson.Marshaler` nor
   `json.Marshaler` now serialize through the `internal/codec` seam instead of
   calling `encoding/json` directly (`structs/error_codec.go`). That was the
