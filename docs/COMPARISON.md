@@ -1,7 +1,7 @@
 # How this library compares
 
-> Snapshot as of **2026-07-10** (v2.6.0). Versions compared:
-> `sourcegraph/jsonrpc2 v0.2.1`, `creachadair/jrpc2 v1.3.5`, Go 1.25 stdlib
+> Snapshot as of **2026-08-29** (v2.8.0). Versions compared:
+> `sourcegraph/jsonrpc2 v0.2.1`, `creachadair/jrpc2 v1.3.5`, Go 1.27 stdlib
 > `net/rpc`. Libraries evolve — **corrections welcome, please open an
 > issue.** Cells about other libraries link to their documentation where
 > the claim is non-obvious. Performance numbers live in
@@ -34,6 +34,7 @@ below it.
 | OpenRPC / service description | yes (generated + `rpc.discover`, default-deny visibility) | no | `rpc.serverInfo` (methods list) | no |
 | Spec quirk worth knowing | — | id reuse across batch n/a | strict version checks | 1.0 wire format |
 | Core direct dependencies | 3 | 1 (gorilla/websocket) | 2 | 0 (stdlib) |
+| Minimum Go version (`go` directive) | 1.26 | 1.12 | 1.25 | stdlib |
 | Maintenance (snapshot date) | active | maintenance mode² | active | stdlib (frozen) |
 | License | MIT | MIT | BSD-3 | BSD-3 |
 
@@ -63,6 +64,10 @@ Honesty first — pick the competitor when these matter to you:
   carries three (easyjson, uuid, coder/websocket — and easyjson's
   maintenance has slowed, which is why an `encoding/json/v2` migration
   path is prepared; see `docs/dev/json-v2-plan.md`).
+- **Minimum Go version.** We require **Go 1.26** — deliberately tracking the
+  set Go still supports, so the floor moves forward roughly every six months.
+  sourcegraph/jsonrpc2 declares `go 1.12` and creachadair/jrpc2 `go 1.25`, so
+  a project pinned to an older toolchain can adopt them and cannot adopt us.
 - **Production mileage.** sourcegraph/jsonrpc2 has years of use inside
   editors and language servers; this library's v2 API is younger.
 

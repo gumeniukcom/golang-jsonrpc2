@@ -58,13 +58,13 @@ walkthrough: [docs/mcp-lsp.md](docs/mcp-lsp.md).
 
 ## Why this library
 
-- **Fast where it counts.** A dispatched call costs ~1.1 µs — below a
+- **Fast where it counts.** A dispatched call costs ~1.0 µs — on par with a
   hand-rolled `encoding/json` dispatcher — and a full end-to-end call runs
-  ~2× faster than the two widely-used alternatives with ~3.4× fewer
-  allocations, matching stdlib `net/rpc` on large-payload throughput.
-  Measured 2026-07-10; full tables, methodology, and caveats:
-  [docs/BENCHMARKS.md](docs/BENCHMARKS.md), reproduce with
-  `make bench-compare`.
+  1.7–2.1× faster than the two widely-used alternatives with ~3× fewer
+  allocations, now level with stdlib `net/rpc` on small calls (`net/rpc`
+  still leads on large payloads). Measured 2026-08-29 on Go 1.27; full
+  tables, methodology, and caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md),
+  reproduce with `make bench-compare`.
 - **One core, five wires.** Register methods once; serve them over HTTP,
   Fiber v2/v3, WebSocket, and stdio (LSP or MCP framing) simultaneously —
   plus a one-call contract for custom transports.
@@ -127,7 +127,7 @@ API reference: [pkg.go.dev](https://pkg.go.dev/github.com/gumeniukcom/golang-jso
 ## Versioning
 
 The module path is `github.com/gumeniukcom/golang-jsonrpc2/v2` (SemVer,
-[Keep a Changelog](CHANGELOG.md)). Go 1.23+. Migrating from v1 or from
+[Keep a Changelog](CHANGELOG.md)). Go 1.26+. Migrating from v1 or from
 another JSON-RPC library: [docs/migrating.md](docs/migrating.md).
 
 ## License
